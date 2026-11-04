@@ -55,6 +55,7 @@ public final class MainActivity extends Activity {
     private static final int PICK_FILE = 102;
     private static final String PREF_NAME = "bani_pe_scurt_prefs";
     private static final String PREF_KEY_DARK_MODE = "dark_mode_enabled";
+    private static final String PREF_KEY_BUDGET = "monthly_budget_bani";
 
     private static final int DANGER_RED = Color.rgb(211, 47, 47);        // #D32F2F
 
@@ -167,6 +168,7 @@ public final class MainActivity extends Activity {
     private String currentSearchQuery = "";
     private String selectedCategoryFilter = "Toate";
     private String importedFileName = "";
+    private long monthlyBudgetBani = 0; // 0 = no budget set
 
     // UI View References
     private LinearLayout root;
@@ -176,14 +178,20 @@ public final class MainActivity extends Activity {
     private LinearLayout categoryBreakdownContainer;
     private LinearLayout chipsContainer;
     private LinearLayout syncCard;
+    private LinearLayout budgetCard;
+    private LinearLayout filterSummaryCard;
+    private TextView filterSummaryText;
     private TextView totalText;
     private TextView countText;
     private TextView avgDailyText;
+    private TextView topExpenseText;
     private TextView monthText;
     private TextView statusText;
     private TextView transactionListTitle;
     private EditText searchInput;
     private ProgressBar progressBar;
+    private Button draftSaveBtnTop;
+    private Button draftSaveBtnBottom;
 
     // Real-time notification broadcast listener
     private final BroadcastReceiver expenseReceiver = new BroadcastReceiver() {
@@ -214,7 +222,7 @@ public final class MainActivity extends Activity {
             // 2. Safely configure system bars
             setupWindowBars();
 
-            // 3. Load saved expenses
+            // 3. Load saved expenses & budget
             loadSavedExpenses();
 
             if (savedInstanceState != null) {
@@ -249,7 +257,6 @@ public final class MainActivity extends Activity {
         if (prefs.contains(PREF_KEY_DARK_MODE)) {
             isDarkMode = prefs.getBoolean(PREF_KEY_DARK_MODE, false);
         } else {
-            // Detect system dark mode default
             int nightModeFlags = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
             isDarkMode = (nightModeFlags == Configuration.UI_MODE_NIGHT_YES);
         }
@@ -293,9 +300,7 @@ public final class MainActivity extends Activity {
                     decorView.setSystemUiVisibility(isDarkMode ? 0 : (View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR));
                 }
             }
-        } catch (Throwable ignored) {
-            // Defensive: protect against custom ROM styling quirks
-        }
+        } catch (Throwable ignored) {}
     }
 
     private void showCrashFallbackUi(Throwable t) {
@@ -426,7 +431,7 @@ public final class MainActivity extends Activity {
 
         root.addView(headerRow, margin(MATCH, WRAP, 0, 0, 0, dp(14)));
 
-        // 2. Month Selector Bar
+        // 2. Month Selector Bar (Clickable for Month Jump Picker!)
         LinearLayout monthBar = new LinearLayout(this);
         monthBar.setGravity(Gravity.CENTER_VERTICAL);
         monthBar.setOrientation(LinearLayout.HORIZONTAL);
@@ -442,6 +447,7 @@ public final class MainActivity extends Activity {
 
         monthText = text("", 15, textMain(), true);
         monthText.setGravity(Gravity.CENTER);
+        monthText.setOnClickListener(v -> openMonthPickerDialog());
 
         Button nextBtn = circularNavButton("›");
         nextBtn.setOnClickListener(v -> {
@@ -463,7 +469,7 @@ public final class MainActivity extends Activity {
         monthBar.addView(currentMonthBtn, margin(WRAP, dp(32), dp(8), 0, 0, 0));
         root.addView(monthBar, margin(MATCH, WRAP, 0, 0, 0, dp(12)));
 
-        // 3. Hero Card: Total Monthly Spending
+        // 3. Hero Card: Total Monthly Spending & Insights
         LinearLayout totalCard = card();
         totalCard.setBackground(round(surfaceColor(), dp(16), borderColor()));
         totalCard.setPadding(dp(18), dp(16), dp(18), dp(16));
@@ -488,9 +494,20 @@ public final class MainActivity extends Activity {
         statsRow.addView(avgDailyText);
 
         totalCard.addView(statsRow);
-        root.addView(totalCard, margin(MATCH, WRAP, 0, 0, 0, dp(12)));
 
-        // 4. Quick Action Buttons
+        topExpenseText = text("", 11, textMuted(), false);
+        totalCard.addView(topExpenseText, margin(MATCH, WRAP, 0, dp(8), 0, 0));
+
+        root.addView(totalCard, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
+
+        // 4. Monthly Budget Tracker Card (QoL Feature)
+        budgetCard = card();
+        budgetCard.setBackground(round(surfaceColor(), dp(14), borderColor()));
+        budgetCard.setPadding(dp(16), dp(12), dp(16), dp(12));
+        budgetCard.setOnClickListener(v -> openSetBudgetDialog());
+        root.addView(budgetCard, margin(MATCH, WRAP, 0, 0, 0, dp(12)));
+
+        // 5. Quick Action Buttons
         LinearLayout actionRow = new LinearLayout(this);
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
 
@@ -506,12 +523,12 @@ public final class MainActivity extends Activity {
 
         root.addView(actionRow, margin(MATCH, WRAP, 0, 0, 0, dp(12)));
 
-        // 5. Real-Time Sync Status Card
+        // 6. Real-Time Sync Status Card
         syncCard = card();
         updateSyncCard();
         root.addView(syncCard, margin(MATCH, WRAP, 0, 0, 0, dp(12)));
 
-        // 6. Category Breakdown Card (Visual Graphical Progress Bars)
+        // 7. Category Breakdown Card (Visual Graphical Progress Bars)
         LinearLayout categoryCard = card();
         categoryCard.setBackground(round(surfaceColor(), dp(16), borderColor()));
         categoryCard.setPadding(dp(18), dp(16), dp(18), dp(16));
@@ -526,7 +543,7 @@ public final class MainActivity extends Activity {
 
         root.addView(categoryCard, margin(MATCH, WRAP, 0, 0, 0, dp(14)));
 
-        // 7. Draft Section for Reviewing Imported Transactions
+        // 8. Draft Section for Reviewing Imported Transactions (BUTTONS AT THE TOP!)
         draftSection = new LinearLayout(this);
         draftSection.setOrientation(LinearLayout.VERTICAL);
         draftSection.setVisibility(View.GONE);
@@ -535,32 +552,45 @@ public final class MainActivity extends Activity {
         draftCard.addView(text("VERIFICĂ TRANZACȚIILE IMPORTATE", 11, primaryGreen(), true));
         statusText = text("", 12, textMain(), false);
         statusText.setLineSpacing(dp(2), 1f);
-        draftCard.addView(statusText, margin(MATCH, WRAP, 0, dp(6), 0, dp(6)));
+        draftCard.addView(statusText, margin(MATCH, WRAP, 0, dp(6), 0, dp(8)));
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setIndeterminate(true);
         progressBar.setVisibility(View.GONE);
         draftCard.addView(progressBar, margin(MATCH, dp(4), 0, 0, 0, dp(8)));
 
+        // TOP ACTION ROW - User requested: Save button right here at the top!
+        LinearLayout draftTopActions = new LinearLayout(this);
+        draftTopActions.setOrientation(LinearLayout.HORIZONTAL);
+
+        draftSaveBtnTop = button("✓ Salvează toate", true);
+        draftSaveBtnTop.setOnClickListener(v -> saveDrafts());
+        draftTopActions.addView(draftSaveBtnTop, new LinearLayout.LayoutParams(0, dp(44), 1.3f));
+
+        Button cancelDraftsTop = button("✕ Renunță", false);
+        cancelDraftsTop.setOnClickListener(v -> cancelImport());
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(0, dp(44), 0.7f);
+        cancelParams.leftMargin = dp(8);
+        draftTopActions.addView(cancelDraftsTop, cancelParams);
+
+        draftCard.addView(draftTopActions, margin(MATCH, WRAP, 0, 0, 0, dp(8)));
+
+        TextView smartTip = text("💡 Sfat: Când schimbi categoria unei plăți, toate tranzacțiile similare se actualizează automat!", 11, textMuted(), false);
+        draftCard.addView(smartTip, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
+
         draftRows = new LinearLayout(this);
         draftRows.setOrientation(LinearLayout.VERTICAL);
         draftCard.addView(draftRows);
 
-        Button saveDraftsButton = button("Salvează toate cheltuielile", true);
-        saveDraftsButton.setOnClickListener(v -> saveDrafts());
-        draftCard.addView(saveDraftsButton, margin(MATCH, dp(46), 0, dp(14), 0, dp(8)));
-
-        Button cancelDraftsButton = button("Renunță la import", false);
-        cancelDraftsButton.setOnClickListener(v -> {
-            drafts.clear();
-            draftSection.setVisibility(View.GONE);
-        });
-        draftCard.addView(cancelDraftsButton, margin(MATCH, dp(40), 0, 0, 0, 0));
+        // Bottom action button (for convenience if user scrolled down)
+        draftSaveBtnBottom = button("✓ Salvează toate cheltuielile", true);
+        draftSaveBtnBottom.setOnClickListener(v -> saveDrafts());
+        draftCard.addView(draftSaveBtnBottom, margin(MATCH, dp(44), 0, dp(12), 0, dp(4)));
 
         draftSection.addView(draftCard);
         root.addView(draftSection, margin(MATCH, WRAP, 0, 0, 0, dp(14)));
 
-        // 8. Transactions Section Title
+        // 9. Transactions Section Title
         LinearLayout transHeader = new LinearLayout(this);
         transHeader.setOrientation(LinearLayout.HORIZONTAL);
         transHeader.setGravity(Gravity.CENTER_VERTICAL);
@@ -570,9 +600,9 @@ public final class MainActivity extends Activity {
         transHeader.addView(transactionListTitle, new LinearLayout.LayoutParams(0, WRAP, 1));
         root.addView(transHeader, margin(MATCH, WRAP, 0, dp(4), 0, dp(8)));
 
-        // 9. Modern Search Bar
+        // 10. Modern Search Bar
         searchInput = new EditText(this);
-        searchInput.setHint("🔍 Caută comerciant, magazin sau categorie…");
+        searchInput.setHint("🔍 Caută comerciant, magazin sau sumă…");
         searchInput.setHintTextColor(textMuted());
         searchInput.setTextSize(13);
         searchInput.setPadding(dp(14), dp(11), dp(14), dp(11));
@@ -589,7 +619,7 @@ public final class MainActivity extends Activity {
         });
         root.addView(searchInput, margin(MATCH, WRAP, 0, 0, 0, dp(8)));
 
-        // 10. Horizontal Category Filter Chips
+        // 11. Horizontal Category Filter Chips
         HorizontalScrollView chipScroll = new HorizontalScrollView(this);
         chipScroll.setHorizontalScrollBarEnabled(false);
         chipsContainer = new LinearLayout(this);
@@ -597,14 +627,40 @@ public final class MainActivity extends Activity {
         chipsContainer.setPadding(0, dp(2), 0, dp(4));
         chipScroll.addView(chipsContainer);
         renderCategoryChips();
-        root.addView(chipScroll, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
+        root.addView(chipScroll, margin(MATCH, WRAP, 0, 0, 0, dp(8)));
 
-        // 11. Transaction List Rows Container
+        // 12. Active Filter & Live Sum Summary Card (QoL Feature)
+        filterSummaryCard = card();
+        filterSummaryCard.setBackground(round(accentLight(), dp(12), primaryGreen()));
+        filterSummaryCard.setPadding(dp(14), dp(10), dp(14), dp(10));
+        filterSummaryCard.setVisibility(View.GONE);
+
+        LinearLayout filterRow = new LinearLayout(this);
+        filterRow.setOrientation(LinearLayout.HORIZONTAL);
+        filterRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        filterSummaryText = text("", 12, primaryDark(), true);
+        filterRow.addView(filterSummaryText, new LinearLayout.LayoutParams(0, WRAP, 1));
+
+        Button resetFilterBtn = smallHeaderButton("✕ Resetează");
+        resetFilterBtn.setOnClickListener(v -> {
+            selectedCategoryFilter = "Toate";
+            currentSearchQuery = "";
+            searchInput.setText("");
+            renderCategoryChips();
+            renderTransactions();
+        });
+        filterRow.addView(resetFilterBtn, new LinearLayout.LayoutParams(WRAP, dp(30)));
+
+        filterSummaryCard.addView(filterRow);
+        root.addView(filterSummaryCard, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
+
+        // 13. Transaction List Rows Container
         transactionRows = new LinearLayout(this);
         transactionRows.setOrientation(LinearLayout.VERTICAL);
         root.addView(transactionRows, margin(MATCH, WRAP, 0, 0, 0, dp(20)));
 
-        // 12. Footer
+        // 14. Footer
         TextView footer = text("Bani pe scurt · Confidențialitate 100% offline pe dispozitiv", 11, textMuted(), false);
         footer.setGravity(Gravity.CENTER);
         root.addView(footer, margin(MATCH, WRAP, 0, dp(4), 0, dp(8)));
@@ -777,8 +833,7 @@ public final class MainActivity extends Activity {
                     progressBar.setVisibility(View.GONE);
                     statusText.setText("" + drafts.size() + (drafts.size() == 1 ? " cheltuială nouă găsită" : " cheltuieli noi găsite") +
                             (result.incomeCount > 0 ? " · " + result.incomeCount + " încasări omise" : "") +
-                            (duplicates > 0 ? " · " + duplicates + " duplicate omise" : "") +
-                            "\nVerifică categoriile de mai jos înainte de salvare.");
+                            (duplicates > 0 ? " · " + duplicates + " duplicate omise" : ""));
                     renderDrafts();
                 });
             } catch (Exception error) {
@@ -803,6 +858,9 @@ public final class MainActivity extends Activity {
 
     private void renderDrafts() {
         draftRows.removeAllViews();
+        if (draftSaveBtnTop != null) draftSaveBtnTop.setText("✓ Salvează (" + drafts.size() + ")");
+        if (draftSaveBtnBottom != null) draftSaveBtnBottom.setText("✓ Salvează (" + drafts.size() + ")");
+
         if (drafts.isEmpty()) {
             TextView empty = text("Nu au rămas tranzacții noi de adăugat.", 12, textMuted(), false);
             draftRows.addView(empty, margin(MATCH, WRAP, 0, dp(8), 0, 0));
@@ -858,8 +916,24 @@ public final class MainActivity extends Activity {
             TextView amountView = text(moneyBani(expense.amountBani), 13, textMain(), true);
             row.addView(amountView);
 
+            // Quick exclude/delete button for draft items
+            TextView removeDraftBtn = text("  ✕", 15, textMuted(), false);
+            removeDraftBtn.setPadding(dp(8), dp(4), dp(4), dp(4));
+            removeDraftBtn.setOnClickListener(v -> {
+                drafts.remove(expense);
+                renderDrafts();
+                Toast.makeText(this, "Plată omisă din import.", Toast.LENGTH_SHORT).show();
+            });
+            row.addView(removeDraftBtn);
+
             draftRows.addView(row, margin(MATCH, WRAP, 0, dp(4), 0, dp(4)));
         }
+    }
+
+    private void cancelImport() {
+        drafts.clear();
+        draftSection.setVisibility(View.GONE);
+        Toast.makeText(this, "Import anulat.", Toast.LENGTH_SHORT).show();
     }
 
     private void saveDrafts() {
@@ -916,6 +990,22 @@ public final class MainActivity extends Activity {
                 }
             }
             month = filtered;
+        }
+
+        // Update Filter & Search Live Summary Card
+        long filteredTotalBani = 0;
+        for (Expense e : month) filteredTotalBani += e.amountBani;
+
+        if (filterSummaryCard != null) {
+            if (!"Toate".equals(selectedCategoryFilter) || !currentSearchQuery.isEmpty()) {
+                filterSummaryCard.setVisibility(View.VISIBLE);
+                String label = !"Toate".equals(selectedCategoryFilter)
+                        ? (getCategoryStyle(selectedCategoryFilter).icon + " " + selectedCategoryFilter)
+                        : ("„" + currentSearchQuery + "”");
+                filterSummaryText.setText(label + "  ·  " + moneyBani(filteredTotalBani) + " (" + month.size() + (month.size() == 1 ? " plată" : " plăți") + ")");
+            } else {
+                filterSummaryCard.setVisibility(View.GONE);
+            }
         }
 
         if (month.isEmpty()) {
@@ -1045,16 +1135,112 @@ public final class MainActivity extends Activity {
             String newCat = ExpenseCategories.ALL[which];
             expense.category = newCat;
             ExpenseCategories.learn(this, expense.description, newCat);
-            if (!isDraft) {
+
+            if (isDraft) {
+                // Smart bulk propagation: update all other matching draft items!
+                String normTarget = BrdStatementParser.normalize(expense.description);
+                int updatedCount = 0;
+                for (Expense d : drafts) {
+                    if (d != expense && BrdStatementParser.normalize(d.description).equals(normTarget)) {
+                        d.category = newCat;
+                        updatedCount++;
+                    }
+                }
+                renderDrafts();
+                if (updatedCount > 0) {
+                    Toast.makeText(this, "Actualizat " + (updatedCount + 1) + " tranzacții similare la „" + newCat + "”!", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, "Categorie schimbată: " + newCat, Toast.LENGTH_SHORT).show();
+                }
+            } else {
                 saveExpenses();
                 updateDashboard();
                 renderTransactions();
-            } else {
-                renderDrafts();
+                Toast.makeText(this, "Categorie schimbată: " + newCat, Toast.LENGTH_SHORT).show();
             }
             dialog.dismiss();
-            Toast.makeText(this, "Categorie schimbată: " + newCat, Toast.LENGTH_SHORT).show();
         });
+        builder.setNegativeButton("Anulează", null);
+        builder.show();
+    }
+
+    private void openMonthPickerDialog() {
+        AlertDialog.Builder builder = createDialogBuilder("Alege luna");
+
+        List<YearMonth> recentMonths = new ArrayList<>();
+        YearMonth now = YearMonth.now();
+        for (int i = 2; i >= -12; i--) {
+            recentMonths.add(now.plusMonths(i));
+        }
+
+        String[] monthNames = new String[recentMonths.size()];
+        int selectedIndex = 0;
+        Locale roLocale = new Locale("ro", "RO");
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("LLLL yyyy", roLocale);
+
+        for (int i = 0; i < recentMonths.size(); i++) {
+            YearMonth ym = recentMonths.get(i);
+            String name = ym.format(fmt);
+            monthNames[i] = name.substring(0, 1).toUpperCase(roLocale) + name.substring(1);
+            if (ym.equals(selectedMonth)) selectedIndex = i;
+        }
+
+        builder.setSingleChoiceItems(monthNames, selectedIndex, (dialog, which) -> {
+            selectedMonth = recentMonths.get(which);
+            updateDashboard();
+            renderTransactions();
+            dialog.dismiss();
+        });
+        builder.setNegativeButton("Anulează", null);
+        builder.show();
+    }
+
+    private void openSetBudgetDialog() {
+        AlertDialog.Builder builder = createDialogBuilder("Buget lunar");
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(22), dp(14), dp(22), dp(10));
+
+        TextView info = text("Setează suma maximă pe care dorești să o cheltuiești în această lună:", 12, textMuted(), false);
+        layout.addView(info, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
+
+        final EditText budgetInput = new EditText(this);
+        budgetInput.setHint("Ex: 2500");
+        budgetInput.setHintTextColor(textMuted());
+        budgetInput.setTextColor(textMain());
+        budgetInput.setTextSize(16);
+        budgetInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        budgetInput.setPadding(dp(12), dp(10), dp(12), dp(10));
+        budgetInput.setBackground(round(inputBg(), dp(8), borderColor()));
+        if (monthlyBudgetBani > 0) {
+            budgetInput.setText(String.format(Locale.US, "%.0f", monthlyBudgetBani / 100.0));
+        }
+        layout.addView(budgetInput);
+
+        builder.setView(layout);
+        builder.setPositiveButton("Salvează", (dialog, which) -> {
+            String str = budgetInput.getText().toString().trim().replace(',', '.');
+            if (!str.isEmpty()) {
+                try {
+                    double val = Double.parseDouble(str);
+                    monthlyBudgetBani = Math.round(val * 100.0);
+                    getSharedPreferences(PREF_NAME, MODE_PRIVATE).edit().putLong(PREF_KEY_BUDGET, monthlyBudgetBani).apply();
+                    updateDashboard();
+                    Toast.makeText(this, "Buget salvat: " + moneyBani(monthlyBudgetBani), Toast.LENGTH_SHORT).show();
+                } catch (Exception e) {
+                    Toast.makeText(this, "Sumă invalidă.", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        if (monthlyBudgetBani > 0) {
+            builder.setNeutralButton("Șterge bugetul", (dialog, which) -> {
+                monthlyBudgetBani = 0;
+                getSharedPreferences(PREF_NAME, MODE_PRIVATE).edit().remove(PREF_KEY_BUDGET).apply();
+                updateDashboard();
+                Toast.makeText(this, "Buget eliminat.", Toast.LENGTH_SHORT).show();
+            });
+        }
         builder.setNegativeButton("Anulează", null);
         builder.show();
     }
@@ -1063,14 +1249,19 @@ public final class MainActivity extends Activity {
         if (monthText == null) return;
         Locale locale = new Locale("ro", "RO");
         String monthName = selectedMonth.format(DateTimeFormatter.ofPattern("LLLL yyyy", locale));
-        monthText.setText(monthName.substring(0, 1).toUpperCase(locale) + monthName.substring(1));
+        monthText.setText(monthName.substring(0, 1).toUpperCase(locale) + monthName.substring(1) + " ▾");
 
         List<Expense> month = monthExpenses();
         long totalBani = 0;
         Map<String, Long> byCategory = new LinkedHashMap<>();
+        Expense maxExpense = null;
+
         for (Expense expense : month) {
             totalBani += expense.amountBani;
             byCategory.put(expense.category, byCategory.getOrDefault(expense.category, 0L) + expense.amountBani);
+            if (maxExpense == null || expense.amountBani > maxExpense.amountBani) {
+                maxExpense = expense;
+            }
         }
 
         totalText.setText(moneyBani(totalBani));
@@ -1089,8 +1280,75 @@ public final class MainActivity extends Activity {
             avgDailyText.setVisibility(View.GONE);
         }
 
+        // Top Single Expense Insight
+        if (maxExpense != null && maxExpense.amountBani > 0) {
+            topExpenseText.setText("⭐ Cea mai mare: " + moneyBani(maxExpense.amountBani) + " · " + maxExpense.description);
+            topExpenseText.setVisibility(View.VISIBLE);
+        } else {
+            topExpenseText.setVisibility(View.GONE);
+        }
+
+        // Budget Section
+        updateBudgetSection(totalBani);
+
         // Render graphical category progress bars
         renderCategoryBreakdown(byCategory, totalBani);
+    }
+
+    private void updateBudgetSection(long totalBani) {
+        if (budgetCard == null) return;
+        budgetCard.removeAllViews();
+
+        if (monthlyBudgetBani <= 0) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+
+            TextView prompt = text("🎯 Setează un buget lunar pentru economii", 12, textMuted(), false);
+            row.addView(prompt, new LinearLayout.LayoutParams(0, WRAP, 1));
+
+            TextView setLabel = text("Setează ＋", 12, primaryGreen(), true);
+            row.addView(setLabel);
+
+            budgetCard.addView(row);
+            return;
+        }
+
+        long remaining = monthlyBudgetBani - totalBani;
+        int percent = (int) Math.round((double) totalBani / monthlyBudgetBani * 100);
+        int barColor = (percent > 100) ? DANGER_RED : ((percent > 85) ? Color.rgb(245, 124, 0) : primaryGreen());
+
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView label = text("BUGET LUNAR", 10, textMuted(), true);
+        label.setLetterSpacing(0.06f);
+        topRow.addView(label, new LinearLayout.LayoutParams(0, WRAP, 1));
+
+        TextView spentLabel = text(percent + "%  ·  " + moneyBani(totalBani) + " / " + moneyBani(monthlyBudgetBani), 12, textMain(), true);
+        topRow.addView(spentLabel);
+        budgetCard.addView(topRow);
+
+        // Visual progress bar
+        LinearLayout bar = createProgressBar(Math.min(100f, percent), barColor);
+        budgetCard.addView(bar, margin(MATCH, dp(7), 0, dp(6), 0, dp(6)));
+
+        LinearLayout btmRow = new LinearLayout(this);
+        btmRow.setOrientation(LinearLayout.HORIZONTAL);
+        btmRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        String remStr = remaining >= 0
+                ? ("Disponibil: " + moneyBani(remaining))
+                : ("Ai depășit bugetul cu " + moneyBani(-remaining) + " ⚠️");
+        int remColor = remaining >= 0 ? primaryGreen() : DANGER_RED;
+        TextView remView = text(remStr, 12, remColor, true);
+        btmRow.addView(remView, new LinearLayout.LayoutParams(0, WRAP, 1));
+
+        TextView editHint = text("Modifică ✎", 11, textMuted(), false);
+        btmRow.addView(editHint);
+
+        budgetCard.addView(btmRow);
     }
 
     private void renderCategoryBreakdown(Map<String, Long> byCategory, long totalBani) {
@@ -1341,9 +1599,32 @@ public final class MainActivity extends Activity {
             return;
         }
 
+        Locale roLocale = new Locale("ro", "RO");
+        String currentMonthName = selectedMonth.format(DateTimeFormatter.ofPattern("LLLL yyyy", roLocale));
+        String[] options = {
+                "Doar luna selectată (" + currentMonthName + ")",
+                "Tot istoricul (" + expenses.size() + " cheltuieli)"
+        };
+
+        AlertDialog.Builder builder = createDialogBuilder("Exportă cheltuieli (CSV)");
+        builder.setItems(options, (dialog, which) -> {
+            boolean onlyCurrentMonth = (which == 0);
+            executeExportCsv(onlyCurrentMonth);
+        });
+        builder.setNegativeButton("Anulează", null);
+        builder.show();
+    }
+
+    private void executeExportCsv(boolean onlyCurrentMonth) {
+        List<Expense> toExport = onlyCurrentMonth ? monthExpenses() : expenses;
+        if (toExport.isEmpty()) {
+            Toast.makeText(this, "Nu există cheltuieli pentru intervalul selectat.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         StringBuilder csv = new StringBuilder();
         csv.append("Data,Descriere,Categorie,Suma\n");
-        for (Expense e : expenses) {
+        for (Expense e : toExport) {
             String safeDesc = e.description.replace("\"", "\"\"");
             csv.append(e.date).append(",\"")
                     .append(safeDesc).append("\",")
@@ -1371,6 +1652,8 @@ public final class MainActivity extends Activity {
 
     private void loadSavedExpenses() {
         SharedPreferences prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE);
+        monthlyBudgetBani = prefs.getLong(PREF_KEY_BUDGET, 0);
+
         String saved = prefs.getString("expenses", null);
         if (saved == null) {
             saved = getPreferences(MODE_PRIVATE).getString("expenses", "[]");
