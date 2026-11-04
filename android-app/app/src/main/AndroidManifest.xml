@@ -1,9 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="false"
         android:label="Bani pe scurt"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -12,5 +16,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Real-time payment listener for Google Wallet and Banking Apps -->
+        <service
+            android:name=".BankNotificationListener"
+            android:label="Bani pe scurt — Sincronizare plăți în timp real"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
     </application>
 </manifest>

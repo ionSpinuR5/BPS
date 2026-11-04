@@ -1,12 +1,12 @@
 # Bani pe scurt — Aplicația Android
 
-Aplicație Android pentru importul extraselor bancare BRD (PDF și CSV), categorisire inteligentă și urmărirea cheltuielilor, 100% offline și privată.
+Aplicație Android nativă pentru urmărirea cheltuielilor în timp real prin notificări bancare (Google Wallet, YOU BRD, Revolut, BT Pay etc.) și import de extrase PDF & CSV, 100% offline și privată.
 
 ---
 
 ## 📱 Instalare rapidă
 
-Poți instala direct APK-ul pre-compilat:
+Poți instala direct APK-ul gata compilat:
 * Fișier: `../BaniPeScurt-v1.1.apk`
 * Comandă ADB:
   ```bash
@@ -15,26 +15,17 @@ Poți instala direct APK-ul pre-compilat:
 
 ---
 
-## 🛠️ Deschidere în Android Studio
+## ⚡ Cum funcționează sincronizarea în timp real
 
-1. Deschide folderul `android-app` în Android Studio.
-2. Așteaptă sincronizarea Gradle.
-3. Apasă **Run** (sau `Shift + F10`) pentru rulare pe emulator sau telefon fizic conectat prin USB.
+1. Deschizi aplicația pe telefon;
+2. În cardul **„Plăți în timp real ⚡”**, apeși pe **„Activează plăți în timp real →”**;
+3. În ecranul de setări Android care se deschide, activezi comutatorul pentru **„Bani pe scurt”** (Acces la notificări);
+4. **Gata!** Când plătești la magazin cu Google Wallet sau cardul, aplicația interceptează notificarea de plată și o adaugă instant pe panoul tău.
 
 ---
 
-## 💡 Funcționalități cheie
+## 🛠️ Deschidere în Android Studio
 
-1. **Import extras PDF & CSV**:
-   * Suportă atât extrasele PDF generate de YOU BRD Web, cât și extrasele CSV.
-   * Procesare exclusiv pe telefon (fără trimitere pe vreun server).
-2. **Auto-categorisire inteligentă**:
-   * Recunoaște comercianți populari din România (supermarketuri, transport, utilități, sănătate etc.).
-   * Memorează modificările utilizatorului: dacă schimbi categoria unui comerciant, aplicația învață și propune aceeași categorie la importurile ulterioare.
-3. **Calcule exacte**:
-   * Banii sunt reprezentați intern ca întregi (`long amountBani`), evitând erorile de precizie IEEE 754.
-4. **Căutare & Editare**:
-   * Căutare rapidă după comerciant/categorie.
-   * Editare facilă prin atingerea iconiței ✎ sau a oricărei tranzacții.
-5. **Export date**:
-   * Buton de **Export CSV** direct din antetul aplicației pentru backup sau transfer în versiunea Web / Excel.
+1. Deschide folderul `android-app` în Android Studio.
+2. Sincronizează proiectul cu Gradle.
+3. Apasă **Run** (sau `Shift + F10`) pentru rulare pe emulator sau telefon conectat prin USB.

@@ -2,15 +2,20 @@ package ro.bani.pe.scut;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
@@ -28,12 +33,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONArray;
-import org.json.JSONObject;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -51,12 +52,17 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final int PICK_FILE = 102;
+    private static final String PREF_NAME = "bani_pe_scurt_prefs";
+
     private static final int INK = Color.rgb(36, 41, 35);
     private static final int MUTED = Color.rgb(130, 138, 128);
     private static final int GREEN = Color.rgb(60, 112, 78);
+    private static final int GREEN_DARK = Color.rgb(46, 92, 64);
     private static final int PAPER = Color.rgb(246, 245, 241);
     private static final int LINE = Color.rgb(235, 237, 231);
-    private static final int HIGHLIGHT = Color.rgb(240, 246, 241);
+    private static final int PEACH_BG = Color.rgb(251, 239, 228);
+    private static final int PEACH_TEXT = Color.rgb(194, 127, 75);
+    private static final int MINT_BG = Color.rgb(230, 242, 232);
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -72,6 +78,7 @@ public final class MainActivity extends Activity {
     private LinearLayout draftSection;
     private LinearLayout draftRows;
     private LinearLayout transactionRows;
+    private LinearLayout syncCard;
     private TextView totalText;
     private TextView countText;
     private TextView monthText;
@@ -81,12 +88,23 @@ public final class MainActivity extends Activity {
     private EditText searchInput;
     private ProgressBar progressBar;
 
+    // Real-time notification broadcast listener
+    private final BroadcastReceiver expenseReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            loadSavedExpenses();
+            updateDashboard();
+            renderTransactions();
+            Toast.makeText(MainActivity.this, "Plată nouă detectată în timp real! ⚡", Toast.LENGTH_SHORT).show();
+        }
+    };
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(PAPER);
         getWindow().setNavigationBarColor(Color.WHITE);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             getWindow().setDecorFitsSystemWindows(true);
             getWindow().getInsetsController().setSystemBarsAppearance(
                     android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
@@ -122,6 +140,30 @@ public final class MainActivity extends Activity {
             draftSection.setVisibility(View.VISIBLE);
             renderDrafts();
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        IntentFilter filter = new IntentFilter(BankNotificationListener.ACTION_EXPENSE_ADDED);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(expenseReceiver, filter, RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(expenseReceiver, filter);
+        }
+
+        loadSavedExpenses();
+        updateDashboard();
+        renderTransactions();
+        updateSyncCard();
+    }
+
+    @Override
+    protected void onPause() {
+        try {
+            unregisterReceiver(expenseReceiver);
+        } catch (Exception ignored) {}
+        super.onPause();
     }
 
     @Override
@@ -165,13 +207,18 @@ public final class MainActivity extends Activity {
         exportBtn.setOnClickListener(v -> showExportDialog());
         headerRow.addView(exportBtn, new LinearLayout.LayoutParams(WRAP, dp(34)));
 
-        root.addView(headerRow, margin(MATCH, WRAP, 0, 0, 0, dp(20)));
+        root.addView(headerRow, margin(MATCH, WRAP, 0, 0, 0, dp(18)));
         root.addView(text("PANOU PERSONAL", 10, MUTED, true), margin(WRAP, WRAP, 0, 0, 0, dp(4)));
 
         TextView title = text("Cheltuieli,\nmai ușor de înțeles.", 26, INK, true);
         title.setLineSpacing(dp(1), 1f);
         root.addView(title, margin(WRAP, WRAP, 0, 0, 0, dp(5)));
-        root.addView(text("Importă extrasul BRD (PDF sau CSV) și categorisește automat.", 13, MUTED, false), margin(WRAP, WRAP, 0, 0, 0, dp(18)));
+        root.addView(text("Plățile se sincronizează automat din notificări sau prin import extras.", 13, MUTED, false), margin(WRAP, WRAP, 0, 0, 0, dp(16)));
+
+        // Real-Time Sync Status Card
+        syncCard = card();
+        updateSyncCard();
+        root.addView(syncCard, margin(MATCH, WRAP, 0, 0, 0, dp(14)));
 
         // Action Buttons
         LinearLayout actionButtons = new LinearLayout(this);
@@ -321,6 +368,63 @@ public final class MainActivity extends Activity {
         setContentView(scroll);
     }
 
+    private boolean isNotificationListenerEnabled() {
+        String pkgName = getPackageName();
+        String flat = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
+        return flat != null && flat.contains(pkgName);
+    }
+
+    private void updateSyncCard() {
+        if (syncCard == null) return;
+        syncCard.removeAllViews();
+
+        boolean isEnabled = isNotificationListenerEnabled();
+
+        if (isEnabled) {
+            syncCard.setBackground(round(MINT_BG, dp(12), GREEN));
+            TextView header = text("SINCRONIZARE ÎN TIMP REAL · ACTIVĂ ⚡", 10, GREEN, true);
+            syncCard.addView(header);
+
+            TextView desc = text("Plățile din Google Wallet, YOU BRD, Revolut sau BT Pay sunt înregistrate automat la atingerea POS-ului.", 12, INK, false);
+            desc.setLineSpacing(dp(3), 1f);
+            syncCard.addView(desc, margin(MATCH, WRAP, 0, dp(4), 0, dp(8)));
+
+            Button testBtn = smallHeaderButton("Trimite plată de test (Demo live) ＋");
+            testBtn.setOnClickListener(v -> triggerTestPayment());
+            syncCard.addView(testBtn, new LinearLayout.LayoutParams(WRAP, dp(34)));
+        } else {
+            syncCard.setBackground(round(Color.WHITE, dp(12), LINE));
+            TextView header = text("PLĂȚI ÎN TIMP REAL ⚡", 10, GREEN, true);
+            syncCard.addView(header);
+
+            TextView desc = text("Vrei ca plățile să se adauge automat când atingi telefonul de POS? Activează ascultarea notificărilor bancare (Google Wallet, YOU BRD etc.).", 12, INK, false);
+            desc.setLineSpacing(dp(3), 1f);
+            syncCard.addView(desc, margin(MATCH, WRAP, 0, dp(4), 0, dp(10)));
+
+            Button enableBtn = button("Activează plăți în timp real →", true);
+            enableBtn.setOnClickListener(v -> {
+                try {
+                    startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+                    Toast.makeText(this, "Găsește „Bani pe scurt” și activează comutatorul.", Toast.LENGTH_LONG).show();
+                } catch (Exception e) {
+                    Toast.makeText(this, "Deschide Setări > Aplicații > Notificări speciale.", Toast.LENGTH_SHORT).show();
+                }
+            });
+            syncCard.addView(enableBtn, margin(MATCH, dp(44), 0, 0, 0, 0));
+        }
+    }
+
+    private void triggerTestPayment() {
+        long now = System.currentTimeMillis();
+        String dateIso = LocalDate.now().toString();
+        Expense sample = new Expense("LIVE|" + now + "|45.50", dateIso, "Kaufland Barbu Văcărescu", "Mâncare", 4550, false);
+        expenses.add(sample);
+        saveExpenses();
+        updateDashboard();
+        renderTransactions();
+        Toast.makeText(this, "Plată simulată adăugată: 45,50 lei la Kaufland!", Toast.LENGTH_SHORT).show();
+    }
+
     private void openFilePicker() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -425,7 +529,6 @@ public final class MainActivity extends Activity {
             spinner.setOnItemSelectedListener(new SimpleItemSelectedListener(position -> {
                 String chosenCategory = ExpenseCategories.ALL[position];
                 expense.category = chosenCategory;
-                // Learn this association for future imports!
                 ExpenseCategories.learn(MainActivity.this, expense.description, chosenCategory);
             }));
             row.addView(spinner, new LinearLayout.LayoutParams(MATCH, dp(42)));
@@ -509,7 +612,7 @@ public final class MainActivity extends Activity {
             TextView amountView = text(moneyBani(expense.amountBani), 13, INK, true);
             first.addView(amountView);
 
-            // Edit button (pencil / edit indicator)
+            // Edit button (pencil)
             TextView editBtn = text("  ✎", 14, GREEN, false);
             editBtn.setPadding(dp(6), 0, dp(4), 0);
             editBtn.setOnClickListener(v -> showEditExpenseDialog(expense));
@@ -735,7 +838,11 @@ public final class MainActivity extends Activity {
     }
 
     private void loadSavedExpenses() {
-        String saved = getPreferences(MODE_PRIVATE).getString("expenses", "[]");
+        SharedPreferences prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE);
+        String saved = prefs.getString("expenses", null);
+        if (saved == null) {
+            saved = getPreferences(MODE_PRIVATE).getString("expenses", "[]");
+        }
         try {
             expenses.clear();
             JSONArray array = new JSONArray(saved);
@@ -752,7 +859,7 @@ public final class MainActivity extends Activity {
         for (Expense expense : expenses) {
             try { array.put(expense.toJson()); } catch (Exception ignored) { }
         }
-        getPreferences(MODE_PRIVATE).edit().putString("expenses", array.toString()).apply();
+        getSharedPreferences(PREF_NAME, MODE_PRIVATE).edit().putString("expenses", array.toString()).apply();
     }
 
     private Spinner categorySpinner(String selected) {

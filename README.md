@@ -1,40 +1,46 @@
 # Bani pe scurt
 
-Aplicație de gestiune a cheltuielilor personale, 100% offline și orientată pe confidențialitate (Local-First), cu suport pentru extrase bancare BRD (PDF și CSV).
+Aplicație de gestiune a cheltuielilor personale, 100% offline și orientată pe confidențialitate (Local-First), cu **sincronizare în timp real din notificări** și suport pentru extrase bancare (PDF și CSV).
 
 ---
 
 ## 🚀 Cum poți încerca aplicația acum
 
 ### 1. Prototipul Web (Imediat în browser)
-Deschide fișierul [`index.html`](index.html) în orice browser (Safari, Chrome, Arc, Brave):
+Deschide fișierul [`index.html`](index.html) în orice browser:
 * **Fără instalare**: Datele sunt salvate local în browser (`localStorage`).
-* **Exemple demonstrative**: Apasă pe butonul **„Exemple demo”** din colțul dreapta-sus pentru a încărca instant cheltuieli realiste (Mega Image, Bolt, Enel, Farmacia Tei etc.) și a vedea graficele și repartizarea pe categorii.
-* **Import & Export CSV**: Poți exporta datele în format CSV sau importa extrase direct în browser.
-* **Căutare & Editare**: Filtrează cheltuielile în timp real după comerciant sau editează tranzacțiile direct (iconița ✎).
+* **Temă Întunecată / Luminoasă**: Comută oricând între Dark Mode și Light Mode cu butonul `🌙 / ☀️` din antet.
+* **Import PDF YOU BRD & CSV**: Trage fișierul PDF descărcat din bancă direct peste pagină (Drag & Drop) pentru extragere locală cu Mozilla PDF.js.
+* **Descrieri optimizate**: Structură fixă a tabelului — coloanele Categorie, Data și Sumă rămân perfect aliniate și vizibile indiferent de lungimea descrierilor.
+* **Exemple demonstrative**: Poți încărca date demo și le poți șterge oricând cu un singur click fără a afecta datele reale.
 
-### 2. Aplicația Android (APK gata compilat)
+### 2. Aplicația Android (APK cu Sincronizare în Timp Real)
 * Fișierul APK actualizat este gata compilat în rădăcina proiectului:
   👉 [`BaniPeScurt-v1.1.apk`](BaniPeScurt-v1.1.apk)
-* Poți instala fișierul direct pe telefonul tău Android (`adb install BaniPeScurt-v1.1.apk` sau transfer prin AirDrop/Cablu USB/Drive) ori în emulatorul Android Studio.
+* Poți instala fișierul direct pe telefonul tău Android (`adb install BaniPeScurt-v1.1.apk` sau transfer prin WhatsApp/AirDrop/Drive).
 
 ---
 
-## 🌟 Îmbunătățiri aduse în versiunea v1.1
+## ⚡ Plăți în Timp Real (Android)
 
-1. **Precizie financiară absolută (Bani/Cenți)**:
-   * Toate calculele matematice și sumele sunt gestionate prin valori întregi (`long amountBani`), eliminând erorile de rotunjire specifice calculelor în virgulă mobilă (`double`).
-2. **Import fișiere CSV & PDF**:
-   * Pe lângă extrasele PDF YOU BRD, aplicația suportă acum și importul extraselor în format **CSV** cu detectare automată a separatorilor și coloanelor.
-3. **Sistem de învățare a categoriilor (Machine Learning euristic local)**:
-   * Dacă modifici manual categoria pentru un magazin/comerciant (ex. setezi un magazin pe o altă categorie), aplicația memorează această asociere local și o aplică automat la toate importurile viitoare.
-4. **Rezolvarea bug-ului de deduplicare**:
-   * Tranzacțiile legitime identice efectuate în aceeași zi (de exemplu două călătorii STB de aceeași sumă) nu mai sunt eliminate accidental, ci primesc identificatori secvențiali unici.
-5. **Căutare și filtrare în timp real**:
-   * Câmp de căutare dedicat pentru a găsi orice plată instant după comerciant sau categorie.
-6. **Editare tranzacții**:
-   * Posibilitatea de a modifica descrierea, suma sau categoria oricărei plăți existente.
-7. **Export & Backup complet**:
-   * Exportă toate datele într-un fișier CSV compatibil universal cu Excel, Google Sheets și varianta Web a aplicației.
-8. **Stabilitate UI și salvare de stare la rotire**:
-   * Interfața nu se mai reface agresiv prin `setContentView()`, iar starea draft-urilor de import este conservată chiar dacă ecranul este rotit.
+Aplicația include serviciul nativ `BankNotificationListener`:
+* **Atingi POS-ul $\rightarrow$ Plata este salvată în 1 secundă!**
+* Ascultă automat notificările de plată generate de:
+  * **Google Wallet**
+  * **YOU BRD**
+  * **Revolut**
+  * **BT Pay (Banca Transilvania)**
+  * **ING Home'Bank, BCR George, Raiffeisen etc.**
+* Extrage automat suma și numele comerciantului, îi atribuie categoria potrivită și o salvează fără să fie nevoie să deschizi aplicația.
+* **100% Offline & Privat**: Notificările sunt procesate exclusiv pe procesorul telefonului tău.
+
+---
+
+## 🌟 Funcționalități principale
+
+1. **Sincronizare în timp real**: Adăugare automată la fiecare plată POS prin notificări de sistem.
+2. **Import PDF & CSV**: Extragere automată a extraselor de cont cu eliminarea încasărilor/salariilor și curățarea textului.
+3. **Precizie financiară absolută (Bani/Cenți)**: Fără erori de rotunjire specifice calculelor în virgulă mobilă (`double`).
+4. **Sistem de învățare a categoriilor (Learning System)**: Memorează automat dacă asociezi un comerciant cu o anumită categorie.
+5. **Căutare & Editare completă**: Găsește rapid orice plată și modifică suma, descrierea sau categoria oricând.
+6. **Export & Backup CSV**: Salvează datele în fișier CSV universal compatibil cu Excel și Google Sheets.
