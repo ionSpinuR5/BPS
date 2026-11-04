@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -25,7 +26,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -54,17 +54,52 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private static final int PICK_FILE = 102;
     private static final String PREF_NAME = "bani_pe_scurt_prefs";
+    private static final String PREF_KEY_DARK_MODE = "dark_mode_enabled";
 
-    // Modern Fintech Palette (Matching Web App)
-    private static final int BG_COLOR = Color.rgb(246, 248, 246);       // #F6F8F6 Soft paper background
-    private static final int SURFACE_COLOR = Color.WHITE;               // #FFFFFF Pure white card
-    private static final int PRIMARY_DARK = Color.rgb(27, 94, 32);       // #1B5E20 Deep forest green
-    private static final int PRIMARY_GREEN = Color.rgb(46, 125, 50);     // #2E7D32 Emerald accent
-    private static final int ACCENT_LIGHT = Color.rgb(232, 245, 233);    // #E8F5E9 Soft mint
-    private static final int TEXT_MAIN = Color.rgb(26, 32, 27);          // #1A201B Crisp text
-    private static final int TEXT_MUTED = Color.rgb(115, 128, 118);      // #738076 Subtitle gray
-    private static final int BORDER_COLOR = Color.rgb(230, 235, 230);    // #E6EBE6 Soft divider
-    private static final int DANGER_RED = Color.rgb(211, 47, 47);        // #D32F2F Accent red
+    private static final int DANGER_RED = Color.rgb(211, 47, 47);        // #D32F2F
+
+    // Dynamic Theme Color Getters (matching Web App variables)
+    private boolean isDarkMode = false;
+
+    private int bgColor() {
+        return isDarkMode ? Color.rgb(17, 22, 19) : Color.rgb(246, 248, 246);       // #111613 vs #F6F8F6
+    }
+
+    private int surfaceColor() {
+        return isDarkMode ? Color.rgb(24, 33, 26) : Color.WHITE;                    // #18211A vs #FFFFFF
+    }
+
+    private int primaryDark() {
+        return isDarkMode ? Color.rgb(120, 201, 142) : Color.rgb(27, 94, 32);       // #78C98E vs #1B5E20
+    }
+
+    private int primaryGreen() {
+        return isDarkMode ? Color.rgb(79, 164, 105) : Color.rgb(46, 125, 50);       // #4FA469 vs #2E7D32
+    }
+
+    private int accentLight() {
+        return isDarkMode ? Color.rgb(28, 50, 34) : Color.rgb(232, 245, 233);       // #1C3222 vs #E8F5E9
+    }
+
+    private int textMain() {
+        return isDarkMode ? Color.rgb(232, 237, 230) : Color.rgb(26, 32, 27);       // #E8EDE6 vs #1A201B
+    }
+
+    private int textMuted() {
+        return isDarkMode ? Color.rgb(149, 158, 146) : Color.rgb(115, 128, 118);    // #959E92 vs #738076
+    }
+
+    private int borderColor() {
+        return isDarkMode ? Color.rgb(38, 49, 40) : Color.rgb(230, 235, 230);       // #263128 vs #E6EBE6
+    }
+
+    private int inputBg() {
+        return isDarkMode ? Color.rgb(19, 25, 20) : Color.WHITE;                    // #131914 vs #FFFFFF
+    }
+
+    private int trackBg() {
+        return isDarkMode ? Color.rgb(32, 42, 34) : Color.rgb(238, 241, 238);
+    }
 
     // Category Styling Definitions
     static final class CategoryStyle {
@@ -83,20 +118,44 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private static final Map<String, CategoryStyle> CATEGORY_STYLES = new LinkedHashMap<>();
-    static {
-        CATEGORY_STYLES.put("Mâncare", new CategoryStyle("Mâncare", "🛒", Color.rgb(232, 245, 233), Color.rgb(46, 125, 50), Color.rgb(67, 160, 71)));
-        CATEGORY_STYLES.put("Transport", new CategoryStyle("Transport", "🚗", Color.rgb(255, 243, 224), Color.rgb(230, 81, 0), Color.rgb(251, 140, 0)));
-        CATEGORY_STYLES.put("Locuință", new CategoryStyle("Locuință", "🏠", Color.rgb(227, 242, 253), Color.rgb(21, 101, 192), Color.rgb(30, 136, 229)));
-        CATEGORY_STYLES.put("Cumpărături", new CategoryStyle("Cumpărături", "🛍️", Color.rgb(243, 229, 245), Color.rgb(123, 31, 162), Color.rgb(142, 36, 170)));
-        CATEGORY_STYLES.put("Sănătate", new CategoryStyle("Sănătate", "💊", Color.rgb(255, 235, 238), Color.rgb(198, 40, 40), Color.rgb(229, 57, 53)));
-        CATEGORY_STYLES.put("Timp liber", new CategoryStyle("Timp liber", "🍿", Color.rgb(224, 242, 241), Color.rgb(0, 105, 92), Color.rgb(0, 137, 123)));
-        CATEGORY_STYLES.put("Altele", new CategoryStyle("Altele", "📦", Color.rgb(236, 239, 241), Color.rgb(69, 90, 100), Color.rgb(96, 125, 139)));
-    }
-
-    private static CategoryStyle getCategoryStyle(String name) {
-        CategoryStyle style = CATEGORY_STYLES.get(name);
-        return style != null ? style : CATEGORY_STYLES.get("Altele");
+    private CategoryStyle getCategoryStyle(String name) {
+        if (isDarkMode) {
+            switch (name) {
+                case "Mâncare":
+                    return new CategoryStyle("Mâncare", "🛒", Color.rgb(28, 50, 34), Color.rgb(120, 201, 142), Color.rgb(79, 164, 105));
+                case "Transport":
+                    return new CategoryStyle("Transport", "🚗", Color.rgb(54, 36, 23), Color.rgb(224, 159, 110), Color.rgb(251, 140, 0));
+                case "Locuință":
+                    return new CategoryStyle("Locuință", "🏠", Color.rgb(26, 44, 61), Color.rgb(130, 177, 255), Color.rgb(30, 136, 229));
+                case "Cumpărături":
+                    return new CategoryStyle("Cumpărături", "🛍️", Color.rgb(46, 30, 54), Color.rgb(206, 147, 216), Color.rgb(171, 71, 188));
+                case "Sănătate":
+                    return new CategoryStyle("Sănătate", "💊", Color.rgb(58, 28, 28), Color.rgb(239, 154, 154), Color.rgb(229, 57, 53));
+                case "Timp liber":
+                    return new CategoryStyle("Timp liber", "🍿", Color.rgb(20, 47, 44), Color.rgb(128, 203, 196), Color.rgb(0, 137, 123));
+                case "Altele":
+                default:
+                    return new CategoryStyle("Altele", "📦", Color.rgb(35, 43, 46), Color.rgb(176, 190, 197), Color.rgb(120, 144, 156));
+            }
+        } else {
+            switch (name) {
+                case "Mâncare":
+                    return new CategoryStyle("Mâncare", "🛒", Color.rgb(232, 245, 233), Color.rgb(46, 125, 50), Color.rgb(67, 160, 71));
+                case "Transport":
+                    return new CategoryStyle("Transport", "🚗", Color.rgb(255, 243, 224), Color.rgb(230, 81, 0), Color.rgb(251, 140, 0));
+                case "Locuință":
+                    return new CategoryStyle("Locuință", "🏠", Color.rgb(227, 242, 253), Color.rgb(21, 101, 192), Color.rgb(30, 136, 229));
+                case "Cumpărături":
+                    return new CategoryStyle("Cumpărături", "🛍️", Color.rgb(243, 229, 245), Color.rgb(123, 31, 162), Color.rgb(142, 36, 170));
+                case "Sănătate":
+                    return new CategoryStyle("Sănătate", "💊", Color.rgb(255, 235, 238), Color.rgb(198, 40, 40), Color.rgb(229, 57, 53));
+                case "Timp liber":
+                    return new CategoryStyle("Timp liber", "🍿", Color.rgb(224, 242, 241), Color.rgb(0, 105, 92), Color.rgb(0, 137, 123));
+                case "Altele":
+                default:
+                    return new CategoryStyle("Altele", "📦", Color.rgb(236, 239, 241), Color.rgb(69, 90, 100), Color.rgb(96, 125, 139));
+            }
+        }
     }
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -146,6 +205,9 @@ public final class MainActivity extends Activity {
         });
 
         try {
+            // Load theme preference (defaults to system setting on AMOLED Xiaomi devices)
+            loadThemePreference();
+
             // 1. Build and attach UI first so Window DecorView is initialized
             initUi();
 
@@ -182,10 +244,31 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void loadThemePreference() {
+        SharedPreferences prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE);
+        if (prefs.contains(PREF_KEY_DARK_MODE)) {
+            isDarkMode = prefs.getBoolean(PREF_KEY_DARK_MODE, false);
+        } else {
+            // Detect system dark mode default
+            int nightModeFlags = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+            isDarkMode = (nightModeFlags == Configuration.UI_MODE_NIGHT_YES);
+        }
+    }
+
+    private void toggleTheme() {
+        isDarkMode = !isDarkMode;
+        getSharedPreferences(PREF_NAME, MODE_PRIVATE).edit().putBoolean(PREF_KEY_DARK_MODE, isDarkMode).apply();
+        setupWindowBars();
+        initUi();
+        updateDashboard();
+        renderTransactions();
+        Toast.makeText(this, isDarkMode ? "Mod întunecat activat 🌙" : "Mod luminos activat ☀️", Toast.LENGTH_SHORT).show();
+    }
+
     private void setupWindowBars() {
         try {
-            getWindow().setStatusBarColor(BG_COLOR);
-            getWindow().setNavigationBarColor(Color.WHITE);
+            getWindow().setStatusBarColor(bgColor());
+            getWindow().setNavigationBarColor(surfaceColor());
             View decorView = getWindow().getDecorView();
             if (decorView != null) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -194,17 +277,20 @@ public final class MainActivity extends Activity {
                         controller = getWindow().getInsetsController();
                     }
                     if (controller != null) {
-                        controller.setSystemBarsAppearance(
+                        int flags = isDarkMode ? 0 : (
                                 android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
-                                        android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                                        android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                        );
+                        controller.setSystemBarsAppearance(
+                                flags,
                                 android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
                                         android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
                         );
                     } else {
-                        decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+                        decorView.setSystemUiVisibility(isDarkMode ? 0 : (View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR));
                     }
                 } else {
-                    decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+                    decorView.setSystemUiVisibility(isDarkMode ? 0 : (View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR));
                 }
             }
         } catch (Throwable ignored) {
@@ -215,7 +301,7 @@ public final class MainActivity extends Activity {
     private void showCrashFallbackUi(Throwable t) {
         try {
             ScrollView sv = new ScrollView(this);
-            sv.setBackgroundColor(BG_COLOR);
+            sv.setBackgroundColor(bgColor());
             sv.setFillViewport(true);
 
             LinearLayout layout = new LinearLayout(this);
@@ -232,16 +318,16 @@ public final class MainActivity extends Activity {
             TextView subtitle = new TextView(this);
             subtitle.setText("Aplicația a întâmpinat o problemă la pornire:");
             subtitle.setTextSize(13);
-            subtitle.setTextColor(TEXT_MAIN);
+            subtitle.setTextColor(textMain());
             layout.addView(subtitle, margin(MATCH, WRAP, 0, dp(8), 0, dp(12)));
 
             TextView details = new TextView(this);
             details.setText(android.util.Log.getStackTraceString(t));
             details.setTextSize(11);
             details.setTypeface(Typeface.MONOSPACE);
-            details.setTextColor(Color.rgb(80, 80, 80));
+            details.setTextColor(textMuted());
             details.setPadding(dp(12), dp(12), dp(12), dp(12));
-            details.setBackground(round(Color.WHITE, dp(8), BORDER_COLOR));
+            details.setBackground(round(surfaceColor(), dp(8), borderColor()));
             layout.addView(details, margin(MATCH, WRAP, 0, 0, 0, dp(16)));
 
             Button retryBtn = button("Resetează datele locale și repornește", true);
@@ -307,14 +393,14 @@ public final class MainActivity extends Activity {
     private void initUi() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(BG_COLOR);
+        scroll.setBackgroundColor(bgColor());
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(18), dp(16), dp(18), dp(32));
         scroll.addView(root);
 
-        // 1. Header / Brand Bar
+        // 1. Header / Brand Bar with Dark Mode Toggle
         LinearLayout headerRow = new LinearLayout(this);
         headerRow.setOrientation(LinearLayout.HORIZONTAL);
         headerRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -322,12 +408,17 @@ public final class MainActivity extends Activity {
         LinearLayout brandBlock = new LinearLayout(this);
         brandBlock.setOrientation(LinearLayout.VERTICAL);
 
-        TextView brand = text("Bani pe scurt", 19, PRIMARY_DARK, true);
+        TextView brand = text("Bani pe scurt", 19, primaryDark(), true);
         brandBlock.addView(brand);
 
-        TextView tagline = text("Controlul cheltuielilor tale", 12, TEXT_MUTED, false);
+        TextView tagline = text("Controlul cheltuielilor tale", 12, textMuted(), false);
         brandBlock.addView(tagline);
         headerRow.addView(brandBlock, new LinearLayout.LayoutParams(0, WRAP, 1));
+
+        // Dark / Light Theme Toggle Button
+        Button themeBtn = smallHeaderButton(isDarkMode ? "☀️" : "🌙");
+        themeBtn.setOnClickListener(v -> toggleTheme());
+        headerRow.addView(themeBtn, margin(WRAP, dp(34), 0, 0, dp(6), 0));
 
         Button exportBtn = smallHeaderButton("Export CSV ↗");
         exportBtn.setOnClickListener(v -> showExportDialog());
@@ -340,7 +431,7 @@ public final class MainActivity extends Activity {
         monthBar.setGravity(Gravity.CENTER_VERTICAL);
         monthBar.setOrientation(LinearLayout.HORIZONTAL);
         monthBar.setPadding(dp(12), dp(8), dp(12), dp(8));
-        monthBar.setBackground(round(SURFACE_COLOR, dp(14), BORDER_COLOR));
+        monthBar.setBackground(round(surfaceColor(), dp(14), borderColor()));
 
         Button prevBtn = circularNavButton("‹");
         prevBtn.setOnClickListener(v -> {
@@ -349,7 +440,7 @@ public final class MainActivity extends Activity {
             renderTransactions();
         });
 
-        monthText = text("", 15, TEXT_MAIN, true);
+        monthText = text("", 15, textMain(), true);
         monthText.setGravity(Gravity.CENTER);
 
         Button nextBtn = circularNavButton("›");
@@ -374,26 +465,26 @@ public final class MainActivity extends Activity {
 
         // 3. Hero Card: Total Monthly Spending
         LinearLayout totalCard = card();
-        totalCard.setBackground(round(SURFACE_COLOR, dp(16), BORDER_COLOR));
+        totalCard.setBackground(round(surfaceColor(), dp(16), borderColor()));
         totalCard.setPadding(dp(18), dp(16), dp(18), dp(16));
 
-        TextView totalLabel = text("TOTAL LUNA ACEASTA", 11, TEXT_MUTED, true);
+        TextView totalLabel = text("TOTAL LUNA ACEASTA", 11, textMuted(), true);
         totalLabel.setLetterSpacing(0.06f);
         totalCard.addView(totalLabel);
 
-        totalText = text("0,00 lei", 32, PRIMARY_DARK, true);
+        totalText = text("0,00 lei", 32, primaryDark(), true);
         totalCard.addView(totalText, margin(WRAP, WRAP, 0, dp(4), 0, dp(8)));
 
         LinearLayout statsRow = new LinearLayout(this);
         statsRow.setOrientation(LinearLayout.HORIZONTAL);
         statsRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        countText = text("0 cheltuieli", 13, TEXT_MUTED, false);
+        countText = text("0 cheltuieli", 13, textMuted(), false);
         statsRow.addView(countText, new LinearLayout.LayoutParams(0, WRAP, 1));
 
-        avgDailyText = text("", 11, PRIMARY_GREEN, true);
+        avgDailyText = text("", 11, primaryGreen(), true);
         avgDailyText.setPadding(dp(8), dp(3), dp(8), dp(3));
-        avgDailyText.setBackground(round(ACCENT_LIGHT, dp(10), Color.TRANSPARENT));
+        avgDailyText.setBackground(round(accentLight(), dp(10), Color.TRANSPARENT));
         statsRow.addView(avgDailyText);
 
         totalCard.addView(statsRow);
@@ -422,10 +513,10 @@ public final class MainActivity extends Activity {
 
         // 6. Category Breakdown Card (Visual Graphical Progress Bars)
         LinearLayout categoryCard = card();
-        categoryCard.setBackground(round(SURFACE_COLOR, dp(16), BORDER_COLOR));
+        categoryCard.setBackground(round(surfaceColor(), dp(16), borderColor()));
         categoryCard.setPadding(dp(18), dp(16), dp(18), dp(16));
 
-        TextView catTitle = text("REPARTIZARE PE CATEGORII", 11, TEXT_MUTED, true);
+        TextView catTitle = text("REPARTIZARE PE CATEGORII", 11, textMuted(), true);
         catTitle.setLetterSpacing(0.06f);
         categoryCard.addView(catTitle, margin(MATCH, WRAP, 0, 0, 0, dp(12)));
 
@@ -441,8 +532,8 @@ public final class MainActivity extends Activity {
         draftSection.setVisibility(View.GONE);
 
         LinearLayout draftCard = card();
-        draftCard.addView(text("VERIFICĂ TRANZACȚIILE IMPORTATE", 11, PRIMARY_GREEN, true));
-        statusText = text("", 12, TEXT_MAIN, false);
+        draftCard.addView(text("VERIFICĂ TRANZACȚIILE IMPORTATE", 11, primaryGreen(), true));
+        statusText = text("", 12, textMain(), false);
         statusText.setLineSpacing(dp(2), 1f);
         draftCard.addView(statusText, margin(MATCH, WRAP, 0, dp(6), 0, dp(6)));
 
@@ -474,7 +565,7 @@ public final class MainActivity extends Activity {
         transHeader.setOrientation(LinearLayout.HORIZONTAL);
         transHeader.setGravity(Gravity.CENTER_VERTICAL);
 
-        transactionListTitle = text("ISTORIC CHELTUIELI", 11, TEXT_MUTED, true);
+        transactionListTitle = text("ISTORIC CHELTUIELI", 11, textMuted(), true);
         transactionListTitle.setLetterSpacing(0.06f);
         transHeader.addView(transactionListTitle, new LinearLayout.LayoutParams(0, WRAP, 1));
         root.addView(transHeader, margin(MATCH, WRAP, 0, dp(4), 0, dp(8)));
@@ -482,10 +573,11 @@ public final class MainActivity extends Activity {
         // 9. Modern Search Bar
         searchInput = new EditText(this);
         searchInput.setHint("🔍 Caută comerciant, magazin sau categorie…");
+        searchInput.setHintTextColor(textMuted());
         searchInput.setTextSize(13);
         searchInput.setPadding(dp(14), dp(11), dp(14), dp(11));
-        searchInput.setBackground(round(SURFACE_COLOR, dp(12), BORDER_COLOR));
-        searchInput.setTextColor(TEXT_MAIN);
+        searchInput.setBackground(round(inputBg(), dp(12), borderColor()));
+        searchInput.setTextColor(textMain());
         searchInput.setSingleLine(true);
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -513,7 +605,7 @@ public final class MainActivity extends Activity {
         root.addView(transactionRows, margin(MATCH, WRAP, 0, 0, 0, dp(20)));
 
         // 12. Footer
-        TextView footer = text("Bani pe scurt · Confidențialitate 100% offline pe dispozitiv", 11, TEXT_MUTED, false);
+        TextView footer = text("Bani pe scurt · Confidențialitate 100% offline pe dispozitiv", 11, textMuted(), false);
         footer.setGravity(Gravity.CENTER);
         root.addView(footer, margin(MATCH, WRAP, 0, dp(4), 0, dp(8)));
 
@@ -540,10 +632,10 @@ public final class MainActivity extends Activity {
 
             if (isSelected) {
                 chip.setTextColor(Color.WHITE);
-                chip.setBackground(round(PRIMARY_GREEN, dp(16), PRIMARY_GREEN));
+                chip.setBackground(round(primaryGreen(), dp(16), primaryGreen()));
             } else {
-                chip.setTextColor(TEXT_MUTED);
-                chip.setBackground(round(SURFACE_COLOR, dp(16), BORDER_COLOR));
+                chip.setTextColor(textMuted());
+                chip.setBackground(round(surfaceColor(), dp(16), borderColor()));
             }
 
             chip.setOnClickListener(v -> {
@@ -573,7 +665,7 @@ public final class MainActivity extends Activity {
         boolean isEnabled = isNotificationListenerEnabled();
 
         if (isEnabled) {
-            syncCard.setBackground(round(ACCENT_LIGHT, dp(14), PRIMARY_GREEN));
+            syncCard.setBackground(round(accentLight(), dp(14), primaryGreen()));
             syncCard.setPadding(dp(16), dp(12), dp(16), dp(12));
 
             LinearLayout row = new LinearLayout(this);
@@ -583,10 +675,10 @@ public final class MainActivity extends Activity {
             LinearLayout textCol = new LinearLayout(this);
             textCol.setOrientation(LinearLayout.VERTICAL);
 
-            TextView header = text("⚡ Sincronizare plăți activă", 12, PRIMARY_DARK, true);
+            TextView header = text("⚡ Sincronizare plăți activă", 12, primaryDark(), true);
             textCol.addView(header);
 
-            TextView desc = text("Detectare automată la POS (Google Wallet & bănci)", 11, TEXT_MUTED, false);
+            TextView desc = text("Detectare automată la POS (Google Wallet & bănci)", 11, textMuted(), false);
             textCol.addView(desc);
             row.addView(textCol, new LinearLayout.LayoutParams(0, WRAP, 1));
 
@@ -596,13 +688,13 @@ public final class MainActivity extends Activity {
 
             syncCard.addView(row);
         } else {
-            syncCard.setBackground(round(SURFACE_COLOR, dp(14), BORDER_COLOR));
+            syncCard.setBackground(round(surfaceColor(), dp(14), borderColor()));
             syncCard.setPadding(dp(16), dp(14), dp(16), dp(14));
 
-            TextView header = text("⚡ Sincronizare în timp real", 12, PRIMARY_DARK, true);
+            TextView header = text("⚡ Sincronizare în timp real", 12, primaryDark(), true);
             syncCard.addView(header);
 
-            TextView desc = text("Vrei ca plățile să se adauge automat la atingerea POS-ului? Activează captarea notificărilor din Google Wallet, Revolut sau YOU BRD.", 12, TEXT_MUTED, false);
+            TextView desc = text("Vrei ca plățile să se adauge automat la atingerea POS-ului? Activează captarea notificărilor din Google Wallet, Revolut sau YOU BRD.", 12, textMuted(), false);
             desc.setLineSpacing(dp(3), 1f);
             syncCard.addView(desc, margin(MATCH, WRAP, 0, dp(4), 0, dp(10)));
 
@@ -712,7 +804,7 @@ public final class MainActivity extends Activity {
     private void renderDrafts() {
         draftRows.removeAllViews();
         if (drafts.isEmpty()) {
-            TextView empty = text("Nu au rămas tranzacții noi de adăugat.", 12, TEXT_MUTED, false);
+            TextView empty = text("Nu au rămas tranzacții noi de adăugat.", 12, textMuted(), false);
             draftRows.addView(empty, margin(MATCH, WRAP, 0, dp(8), 0, 0));
             return;
         }
@@ -726,7 +818,7 @@ public final class MainActivity extends Activity {
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(12), dp(10), dp(12), dp(10));
-            row.setBackground(round(SURFACE_COLOR, dp(12), BORDER_COLOR));
+            row.setBackground(round(surfaceColor(), dp(12), borderColor()));
 
             TextView iconView = new TextView(this);
             iconView.setText(style.icon);
@@ -739,7 +831,7 @@ public final class MainActivity extends Activity {
             middle.setOrientation(LinearLayout.VERTICAL);
             middle.setPadding(dp(10), 0, dp(8), 0);
 
-            TextView top = text(expense.description, 13, TEXT_MAIN, true);
+            TextView top = text(expense.description, 13, textMain(), true);
             top.setMaxLines(1);
             top.setEllipsize(TextUtils.TruncateAt.END);
             middle.addView(top);
@@ -748,10 +840,10 @@ public final class MainActivity extends Activity {
             subRow.setOrientation(LinearLayout.HORIZONTAL);
             subRow.setGravity(Gravity.CENTER_VERTICAL);
 
-            TextView details = text(formatDate(expense.date), 11, TEXT_MUTED, false);
+            TextView details = text(formatDate(expense.date), 11, textMuted(), false);
             subRow.addView(details);
 
-            TextView dot = text("  •  ", 10, BORDER_COLOR, false);
+            TextView dot = text("  •  ", 10, borderColor(), false);
             subRow.addView(dot);
 
             TextView catPill = text(expense.category + " ▾", 11, style.textColor, true);
@@ -763,7 +855,7 @@ public final class MainActivity extends Activity {
             middle.addView(subRow, margin(WRAP, WRAP, 0, dp(2), 0, 0));
             row.addView(middle, new LinearLayout.LayoutParams(0, WRAP, 1));
 
-            TextView amountView = text(moneyBani(expense.amountBani), 13, TEXT_MAIN, true);
+            TextView amountView = text(moneyBani(expense.amountBani), 13, textMain(), true);
             row.addView(amountView);
 
             draftRows.addView(row, margin(MATCH, WRAP, 0, dp(4), 0, dp(4)));
@@ -831,7 +923,7 @@ public final class MainActivity extends Activity {
             emptyCard.setGravity(Gravity.CENTER);
             emptyCard.setPadding(dp(20), dp(32), dp(20), dp(32));
 
-            TextView emoji = text("🍃", 32, PRIMARY_GREEN, false);
+            TextView emoji = text("🍃", 32, primaryGreen(), false);
             emoji.setGravity(Gravity.CENTER);
             emptyCard.addView(emoji);
 
@@ -841,7 +933,7 @@ public final class MainActivity extends Activity {
                     : "Nicio cheltuială la categoria „" + selectedCategoryFilter + "”.")
                     : "Niciun rezultat pentru căutarea curentă.";
 
-            TextView empty = text(msg, 13, TEXT_MUTED, false);
+            TextView empty = text(msg, 13, textMuted(), false);
             empty.setGravity(Gravity.CENTER);
             empty.setLineSpacing(dp(3), 1f);
             emptyCard.addView(empty, margin(MATCH, WRAP, 0, dp(8), 0, 0));
@@ -858,7 +950,7 @@ public final class MainActivity extends Activity {
         }
 
         if (month.size() > limit) {
-            TextView more = text("Și încă " + (month.size() - limit) + " cheltuieli în luna aceasta.", 12, TEXT_MUTED, false);
+            TextView more = text("Și încă " + (month.size() - limit) + " cheltuieli în luna aceasta.", 12, textMuted(), false);
             more.setGravity(Gravity.CENTER);
             transactionRows.addView(more, margin(MATCH, WRAP, 0, dp(8), 0, 0));
         }
@@ -871,7 +963,7 @@ public final class MainActivity extends Activity {
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setPadding(dp(12), dp(12), dp(14), dp(12));
-        card.setBackground(round(SURFACE_COLOR, dp(14), BORDER_COLOR));
+        card.setBackground(round(surfaceColor(), dp(14), borderColor()));
 
         // 1. Left: Circle Category Icon
         TextView iconView = new TextView(this);
@@ -889,7 +981,7 @@ public final class MainActivity extends Activity {
         TextView title = new TextView(this);
         title.setText(expense.description);
         title.setTextSize(14);
-        title.setTextColor(TEXT_MAIN);
+        title.setTextColor(textMain());
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setMaxLines(1);
         title.setEllipsize(TextUtils.TruncateAt.END);
@@ -902,13 +994,13 @@ public final class MainActivity extends Activity {
         TextView dateView = new TextView(this);
         dateView.setText(formatDate(expense.date));
         dateView.setTextSize(11);
-        dateView.setTextColor(TEXT_MUTED);
+        dateView.setTextColor(textMuted());
         subRow.addView(dateView);
 
         TextView dot = new TextView(this);
         dot.setText("  •  ");
         dot.setTextSize(10);
-        dot.setTextColor(BORDER_COLOR);
+        dot.setTextColor(borderColor());
         subRow.addView(dot);
 
         // Clickable Category Pill
@@ -933,7 +1025,7 @@ public final class MainActivity extends Activity {
         TextView amountView = new TextView(this);
         amountView.setText(moneyBani(expense.amountBani));
         amountView.setTextSize(14);
-        amountView.setTextColor(TEXT_MAIN);
+        amountView.setTextColor(textMain());
         amountView.setTypeface(Typeface.DEFAULT_BOLD);
         right.addView(amountView);
 
@@ -946,8 +1038,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showCategoryPickerDialog(Expense expense, boolean isDraft) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Schimbă categoria");
+        AlertDialog.Builder builder = createDialogBuilder("Schimbă categoria");
 
         int currentIdx = ExpenseCategories.indexOf(expense.category);
         builder.setSingleChoiceItems(ExpenseCategories.ALL, currentIdx, (dialog, which) -> {
@@ -1007,7 +1098,7 @@ public final class MainActivity extends Activity {
         categoryBreakdownContainer.removeAllViews();
 
         if (byCategory.isEmpty() || totalBani == 0) {
-            TextView empty = text("Nicio cheltuială înregistrată pentru această lună.", 12, TEXT_MUTED, false);
+            TextView empty = text("Nicio cheltuială înregistrată pentru această lună.", 12, textMuted(), false);
             empty.setPadding(0, dp(4), 0, dp(4));
             categoryBreakdownContainer.addView(empty);
             return;
@@ -1032,10 +1123,10 @@ public final class MainActivity extends Activity {
             labels.setOrientation(LinearLayout.HORIZONTAL);
             labels.setGravity(Gravity.CENTER_VERTICAL);
 
-            TextView nameView = text(style.icon + "  " + category, 13, TEXT_MAIN, true);
+            TextView nameView = text(style.icon + "  " + category, 13, textMain(), true);
             labels.addView(nameView, new LinearLayout.LayoutParams(0, WRAP, 1));
 
-            TextView valView = text(moneyBani(bani) + "  ·  " + String.format(Locale.US, "%.0f%%", percent), 12, TEXT_MAIN, true);
+            TextView valView = text(moneyBani(bani) + "  ·  " + String.format(Locale.US, "%.0f%%", percent), 12, textMain(), true);
             labels.addView(valView);
             item.addView(labels, margin(MATCH, WRAP, 0, 0, 0, dp(6)));
 
@@ -1058,7 +1149,7 @@ public final class MainActivity extends Activity {
     private LinearLayout createProgressBar(float percent, int color) {
         LinearLayout track = new LinearLayout(this);
         track.setOrientation(LinearLayout.HORIZONTAL);
-        track.setBackground(round(Color.rgb(238, 241, 238), dp(4), Color.TRANSPARENT));
+        track.setBackground(round(trackBg(), dp(4), Color.TRANSPARENT));
         track.setWeightSum(100f);
 
         View progress = new View(this);
@@ -1084,9 +1175,19 @@ public final class MainActivity extends Activity {
         return month;
     }
 
+    private AlertDialog.Builder createDialogBuilder(String title) {
+        AlertDialog.Builder builder;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP_MR1) {
+            builder = new AlertDialog.Builder(this, isDarkMode ? AlertDialog.THEME_DEVICE_DEFAULT_DARK : AlertDialog.THEME_DEVICE_DEFAULT_LIGHT);
+        } else {
+            builder = new AlertDialog.Builder(this);
+        }
+        if (title != null) builder.setTitle(title);
+        return builder;
+    }
+
     private void openManualAddDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Adaugă cheltuială");
+        AlertDialog.Builder builder = createDialogBuilder("Adaugă cheltuială");
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -1094,29 +1195,32 @@ public final class MainActivity extends Activity {
 
         final EditText descInput = new EditText(this);
         descInput.setHint("Comerciant (ex: Kaufland, Bolt, Farmacie)");
+        descInput.setHintTextColor(textMuted());
+        descInput.setTextColor(textMain());
         descInput.setTextSize(14);
         descInput.setPadding(dp(12), dp(10), dp(12), dp(10));
-        descInput.setBackground(round(Color.WHITE, dp(8), BORDER_COLOR));
+        descInput.setBackground(round(inputBg(), dp(8), borderColor()));
         layout.addView(descInput, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
 
         final EditText amountInput = new EditText(this);
         amountInput.setHint("Sumă în lei (ex: 35.50)");
+        amountInput.setHintTextColor(textMuted());
+        amountInput.setTextColor(textMain());
         amountInput.setTextSize(14);
         amountInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         amountInput.setPadding(dp(12), dp(10), dp(12), dp(10));
-        amountInput.setBackground(round(Color.WHITE, dp(8), BORDER_COLOR));
+        amountInput.setBackground(round(inputBg(), dp(8), borderColor()));
         layout.addView(amountInput, margin(MATCH, WRAP, 0, 0, 0, dp(12)));
 
-        TextView catLabel = text("Alege categoria:", 12, TEXT_MUTED, true);
+        TextView catLabel = text("Alege categoria:", 12, textMuted(), true);
         layout.addView(catLabel, margin(MATCH, WRAP, 0, 0, 0, dp(6)));
 
         final int[] selectedCatIdx = {0};
-        TextView categorySelector = text("🛒  Mâncare  ▾", 13, PRIMARY_DARK, true);
+        TextView categorySelector = text("🛒  Mâncare  ▾", 13, primaryDark(), true);
         categorySelector.setPadding(dp(14), dp(10), dp(14), dp(10));
-        categorySelector.setBackground(round(ACCENT_LIGHT, dp(8), PRIMARY_GREEN));
+        categorySelector.setBackground(round(accentLight(), dp(8), primaryGreen()));
         categorySelector.setOnClickListener(v -> {
-            new AlertDialog.Builder(this)
-                    .setTitle("Selectează categoria")
+            createDialogBuilder("Selectează categoria")
                     .setSingleChoiceItems(ExpenseCategories.ALL, selectedCatIdx[0], (d, which) -> {
                         selectedCatIdx[0] = which;
                         String cat = ExpenseCategories.ALL[which];
@@ -1159,8 +1263,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showEditExpenseDialog(Expense expense) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Editează cheltuiala");
+        AlertDialog.Builder builder = createDialogBuilder("Editează cheltuiala");
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -1168,30 +1271,31 @@ public final class MainActivity extends Activity {
 
         final EditText descInput = new EditText(this);
         descInput.setText(expense.description);
+        descInput.setTextColor(textMain());
         descInput.setTextSize(14);
         descInput.setPadding(dp(12), dp(10), dp(12), dp(10));
-        descInput.setBackground(round(Color.WHITE, dp(8), BORDER_COLOR));
+        descInput.setBackground(round(inputBg(), dp(8), borderColor()));
         layout.addView(descInput, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
 
         final EditText amountInput = new EditText(this);
         amountInput.setText(String.format(Locale.US, "%.2f", expense.amount));
+        amountInput.setTextColor(textMain());
         amountInput.setTextSize(14);
         amountInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         amountInput.setPadding(dp(12), dp(10), dp(12), dp(10));
-        amountInput.setBackground(round(Color.WHITE, dp(8), BORDER_COLOR));
+        amountInput.setBackground(round(inputBg(), dp(8), borderColor()));
         layout.addView(amountInput, margin(MATCH, WRAP, 0, 0, 0, dp(12)));
 
-        TextView catLabel = text("Categoria:", 12, TEXT_MUTED, true);
+        TextView catLabel = text("Categoria:", 12, textMuted(), true);
         layout.addView(catLabel, margin(MATCH, WRAP, 0, 0, 0, dp(6)));
 
         final int[] selectedCatIdx = {Math.max(0, ExpenseCategories.indexOf(expense.category))};
         CategoryStyle style = getCategoryStyle(expense.category);
-        TextView categorySelector = text(style.icon + "  " + expense.category + "  ▾", 13, PRIMARY_DARK, true);
+        TextView categorySelector = text(style.icon + "  " + expense.category + "  ▾", 13, primaryDark(), true);
         categorySelector.setPadding(dp(14), dp(10), dp(14), dp(10));
-        categorySelector.setBackground(round(ACCENT_LIGHT, dp(8), PRIMARY_GREEN));
+        categorySelector.setBackground(round(accentLight(), dp(8), primaryGreen()));
         categorySelector.setOnClickListener(v -> {
-            new AlertDialog.Builder(this)
-                    .setTitle("Schimbă categoria")
+            createDialogBuilder("Schimbă categoria")
                     .setSingleChoiceItems(ExpenseCategories.ALL, selectedCatIdx[0], (d, which) -> {
                         selectedCatIdx[0] = which;
                         String cat = ExpenseCategories.ALL[which];
@@ -1296,8 +1400,8 @@ public final class MainActivity extends Activity {
         button.setTextSize(14);
         button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         button.setAllCaps(false);
-        button.setTextColor(primary ? Color.WHITE : PRIMARY_DARK);
-        button.setBackground(round(primary ? PRIMARY_GREEN : SURFACE_COLOR, dp(12), primary ? PRIMARY_GREEN : BORDER_COLOR));
+        button.setTextColor(primary ? Color.WHITE : primaryDark());
+        button.setBackground(round(primary ? primaryGreen() : surfaceColor(), dp(12), primary ? primaryGreen() : borderColor()));
         return button;
     }
 
@@ -1306,8 +1410,8 @@ public final class MainActivity extends Activity {
         button.setText(label);
         button.setTextSize(22);
         button.setPadding(0, 0, 0, dp(3));
-        button.setTextColor(PRIMARY_DARK);
-        button.setBackground(round(BG_COLOR, dp(18), Color.TRANSPARENT));
+        button.setTextColor(primaryDark());
+        button.setBackground(round(bgColor(), dp(18), Color.TRANSPARENT));
         return button;
     }
 
@@ -1318,8 +1422,8 @@ public final class MainActivity extends Activity {
         button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         button.setAllCaps(false);
         button.setPadding(dp(12), dp(4), dp(12), dp(4));
-        button.setTextColor(PRIMARY_DARK);
-        button.setBackground(round(SURFACE_COLOR, dp(8), BORDER_COLOR));
+        button.setTextColor(primaryDark());
+        button.setBackground(round(surfaceColor(), dp(8), borderColor()));
         return button;
     }
 
@@ -1327,7 +1431,7 @@ public final class MainActivity extends Activity {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
-        card.setBackground(round(SURFACE_COLOR, dp(14), BORDER_COLOR));
+        card.setBackground(round(surfaceColor(), dp(14), borderColor()));
         return card;
     }
 
