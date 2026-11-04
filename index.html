@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f6f5f1" />
+    <title>Bani pe scurt — Cheltuieli personale</title>
+    <!-- Prevent theme flicker on load -->
+    <script>
+      (function() {
+        const saved = localStorage.getItem('bani-theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (saved === 'dark' || (!saved && prefersDark)) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <!-- Local Mozilla PDF.js for 100% offline, privacy-first PDF statement parsing -->
+    <script src="pdf.min.js"></script>
+  </head>
+  <body>
+    <div id="drag-overlay" class="drag-overlay">
+      <div class="drag-box">
+        <span class="drag-icon">📄</span>
+        <strong>Trage extrasul aici</strong>
+        <p>Procesăm PDF-ul sau CSV-ul 100% local în browserul tău.</p>
+      </div>
+    </div>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#" aria-label="Bani pe scurt, pagina principală">
+          <span class="brand-mark">b.</span>
+          <span class="brand-name">bani<span>pe scurt</span></span>
+        </a>
+        <div class="side-label">MENIU</div>
+        <nav aria-label="Navigare principală">
+          <a class="nav-item active" href="#overview"><span class="nav-icon">◫</span>Prezentare generală</a>
+          <a class="nav-item" href="#transactions"><span class="nav-icon">↕</span>Cheltuieli</a>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="tip-card">
+            <span class="tip-spark">✳</span>
+            <strong>Import extras YOU BRD</strong>
+            <p>Trage extrasul PDF descărcat din YOU BRD sau apasă butonul de import.</p>
+          </div>
+          <div class="profile"><div class="avatar">✦</div><div><strong>Finanțele mele</strong><small>Doar pe acest dispozitiv</small></div><span class="profile-dots">···</span></div>
+        </div>
+      </aside>
+
+      <main class="main-content" id="overview">
+        <header class="topbar">
+          <div class="breadcrumb">Spațiul meu <span>/</span> <strong>Prezentare generală</strong></div>
+          <div class="top-actions">
+            <!-- Theme Toggle Button -->
+            <button class="subtle-button theme-toggle-btn" id="theme-toggle" aria-label="Comută tema" title="Schimbă tema"></button>
+            <button class="subtle-button primary-subtle" id="import-btn" title="Importă extras PDF YOU BRD sau CSV">↑ Importă extras (PDF / CSV)</button>
+            <input type="file" id="import-file" accept=".pdf,.csv,.json" style="display:none" />
+            <button class="subtle-button" id="export-btn" title="Descarcă datele în fișier CSV">↓ Exportă CSV</button>
+            <span id="demo-actions-container">
+              <button class="subtle-button" id="demo-btn" title="Adaugă câteva cheltuieli exemplu">Exemple demo</button>
+            </span>
+            <span class="today-label" id="today-label"></span>
+            <button class="icon-button" aria-label="Ajutor" title="Aplicația salvează datele 100% local în browserul acestui dispozitiv">?</button>
+          </div>
+        </header>
+
+        <section class="welcome-row">
+          <div>
+            <p class="eyebrow">PANOU PERSONAL</p>
+            <h1>Hai să vedem <em>cum stăm.</em></h1>
+            <p class="subtitle">O imagine simplă, curată și exactă a cheltuielilor tale.</p>
+          </div>
+          <button class="primary-button" id="open-form"><span>＋</span> Adaugă manual</button>
+        </section>
+
+        <!-- Banner shown when demo transactions exist -->
+        <div id="demo-banner" class="demo-banner" style="display:none">
+          <div class="demo-banner-content">
+            <span class="demo-banner-badge">DEMO ACTIV</span>
+            <span id="demo-banner-text">Sunt afișate cheltuieli demonstrative de test.</span>
+          </div>
+          <div class="demo-banner-actions">
+            <div class="view-mode-tabs">
+              <button type="button" class="view-mode-tab active" data-mode="all">Toate</button>
+              <button type="button" class="view-mode-tab" data-mode="real">Doar Reale</button>
+              <button type="button" class="view-mode-tab" data-mode="demo">Doar Demo</button>
+            </div>
+            <button type="button" class="danger-button-sm" id="banner-clear-demo" title="Șterge definitiv toate valorile demonstrative">🗑️ Șterge definitiv demo</button>
+          </div>
+        </div>
+
+        <section class="month-toolbar" aria-label="Alege luna">
+          <div>
+            <span class="month-caption">REZUMAT PENTRU</span>
+            <div class="month-control">
+              <button id="prev-month" class="month-arrow" aria-label="Luna precedentă">‹</button>
+              <strong id="month-title"></strong>
+              <button id="next-month" class="month-arrow" aria-label="Luna următoare">›</button>
+            </div>
+          </div>
+          <button id="this-month" class="text-button">Luna aceasta <span>↗</span></button>
+        </section>
+
+        <section class="summary-grid" aria-label="Rezumat lunar">
+          <article class="summary-card total-card">
+            <div class="card-top"><span class="card-label">TOTAL CHELTUIT</span><span class="card-icon mint">↘</span></div>
+            <div class="summary-value" id="total-value">0,00 lei</div>
+            <div class="card-foot"><span class="dot mint-dot"></span><span id="total-note">În luna selectată</span></div>
+          </article>
+          <article class="summary-card">
+            <div class="card-top"><span class="card-label">NUMĂR CHELTUIELI</span><span class="card-icon lilac">▤</span></div>
+            <div class="summary-value" id="count-value">0</div>
+            <div class="card-foot"><span id="count-note">Nicio cheltuială încă</span></div>
+          </article>
+          <article class="summary-card">
+            <div class="card-top"><span class="card-label">CATEGORIA PRINCIPALĂ</span><span class="card-icon peach">✳</span></div>
+            <div class="summary-value category-value" id="top-category">—</div>
+            <div class="card-foot"><span id="top-category-note">Adaugă o cheltuială ca să începi</span></div>
+          </article>
+        </section>
+
+        <section class="content-grid">
+          <article class="panel category-panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Pe categorii</h2>
+                <p>Unde s-au dus banii luna aceasta</p>
+              </div>
+              <span class="panel-menu">···</span>
+            </div>
+            <div id="category-breakdown" class="category-breakdown"></div>
+            <div id="category-empty" class="empty-category">
+              <div class="empty-icon">◌</div>
+              <strong>Deocamdată e liniște aici</strong>
+              <span>Cheltuielile tale vor apărea pe categorii.</span>
+            </div>
+          </article>
+
+          <article class="panel transactions-panel" id="transactions">
+            <div class="panel-heading">
+              <div>
+                <h2>Cheltuieli înregistrate</h2>
+                <p>Înregistrările din luna selectată</p>
+              </div>
+              <div class="panel-actions">
+                <input type="search" id="search-input" placeholder="Caută comerciant..." class="search-field" />
+                <button id="toggle-expand-all" class="subtle-button" title="Comută între afișare compactă pe 1 rând și descriere completă">⤢ Extinde tot</button>
+                <button id="clear-filter" class="subtle-button">Toate <span>⌄</span></button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="transactions-table">
+                <thead>
+                  <tr>
+                    <th class="col-desc">DESCRIERE</th>
+                    <th class="col-cat">CATEGORIE</th>
+                    <th class="col-date">DATA</th>
+                    <th class="col-amount amount-heading">SUMĂ</th>
+                    <th class="col-actions"></th>
+                  </tr>
+                </thead>
+                <tbody id="expense-list"></tbody>
+              </table>
+            </div>
+            <div id="list-empty" class="empty-list">
+              <div class="empty-list-icon">＋</div>
+              <strong>Nicio cheltuială în această lună</strong>
+              <span>Apasă <b>↑ Importă extras (PDF / CSV)</b> pentru a încărca extrasul tău bancar BRD.</span>
+              <button class="text-button" id="empty-add">Adaugă o cheltuială manual <span>→</span></button>
+            </div>
+            <div class="table-footer" id="table-footer">
+              <span id="visible-count">0 înregistrări</span>
+              <span>Date 100% private, doar pe acest dispozitiv <span class="save-check">✓</span></span>
+            </div>
+          </article>
+        </section>
+
+        <footer class="page-footer">
+          <span>Bani pe scurt · Cheltuieli personale</span>
+          <span>Făcută pentru claritate și control financiar <b>✳</b></span>
+        </footer>
+      </main>
+    </div>
+
+    <!-- Review Import Dialog for PDF and CSV -->
+    <dialog id="review-dialog" class="expense-dialog review-dialog">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow" id="review-eyebrow">VERIFICĂ IMPORTUL</p>
+          <h2 id="review-title">Tranzacții găsite în extras</h2>
+          <p class="review-status" id="review-status">Se încarcă…</p>
+        </div>
+        <button type="button" class="close-button" id="close-review" aria-label="Închide">×</button>
+      </div>
+      <div class="review-table-wrap">
+        <table class="review-table">
+          <thead>
+            <tr>
+              <th>DATA</th>
+              <th>DESCRIERE / COMERCIANT</th>
+              <th>SUMĂ</th>
+              <th>CATEGORIE PROPUSĂ</th>
+            </tr>
+          </thead>
+          <tbody id="review-list"></tbody>
+        </table>
+      </div>
+      <div class="review-actions">
+        <button class="primary-button" id="confirm-import-btn">Adaugă toate cheltuielile <span>✓</span></button>
+        <button class="subtle-button" id="cancel-review-btn">Anulează</button>
+      </div>
+    </dialog>
+
+    <!-- Manual Add / Edit Dialog -->
+    <dialog id="expense-dialog" class="expense-dialog">
+      <form id="expense-form" method="dialog">
+        <input type="hidden" id="expense-id" name="id" value="" />
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow" id="dialog-eyebrow">O NOUĂ ÎNREGISTRARE</p>
+            <h2 id="dialog-title">Adaugă cheltuială</h2>
+          </div>
+          <button type="button" class="close-button" id="close-dialog" aria-label="Închide">×</button>
+        </div>
+        <label for="description">Pentru ce a fost?</label>
+        <input id="description" name="description" maxlength="90" placeholder="Ex. Cumpărături Kaufland" required />
+        <div class="form-row">
+          <div class="field">
+            <label for="amount">Sumă (lei)</label>
+            <input id="amount" name="amount" type="number" min="0.01" step="0.01" placeholder="0,00" required />
+          </div>
+          <div class="field">
+            <label for="category">Categorie</label>
+            <select id="category" name="category"></select>
+          </div>
+        </div>
+        <label for="date">Data</label>
+        <input id="date" name="date" type="date" required />
+        <button class="primary-button submit-button" type="submit" id="submit-btn">Salvează cheltuiala <span>→</span></button>
+        <p class="privacy-note"><span>◉</span> Înregistrările rămân 100% în browserul acestui dispozitiv.</p>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
