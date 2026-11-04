@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Circular Forest Green Background -->
+    <path
+        android:fillColor="#3C704E"
+        android:pathData="M54,54m-54,0a54,54 0,1 1,108 0a54,54 0,1 1,-108 0" />
+    <!-- White Card Body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M26,34h56c3.31,0 6,2.69 6,6v28c0,3.31 -2.69,6 -6,6H26c-3.31,0 -6,-2.69 -6,-6V40c0,-3.31 2.69,-6 6,-6z" />
+    <!-- Magnetic / Accent Stripe -->
+    <path
+        android:fillColor="#242923"
+        android:pathData="M20,44h68v7H20z" />
+    <!-- Coin / Gold Chip -->
+    <path
+        android:fillColor="#F6A623"
+        android:pathData="M70,58m-5,0a5,5 0,1 1,10 0a5,5 0,1 1,-10 0" />
+</vector>

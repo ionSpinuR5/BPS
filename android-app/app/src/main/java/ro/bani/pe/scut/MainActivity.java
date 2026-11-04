@@ -102,60 +102,142 @@ public final class MainActivity extends Activity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(PAPER);
-        getWindow().setNavigationBarColor(Color.WHITE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            getWindow().setDecorFitsSystemWindows(true);
-            getWindow().getInsetsController().setSystemBarsAppearance(
-                    android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
-                            android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                    android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
-                            android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            );
-        } else {
-            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-        }
 
-        loadSavedExpenses();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            android.util.Log.e("BaniPeScurt", "Uncaught exception", throwable);
+        });
 
-        if (savedInstanceState != null) {
-            String monthStr = savedInstanceState.getString("selectedMonth", "");
-            if (!monthStr.isEmpty()) {
-                try { selectedMonth = YearMonth.parse(monthStr); } catch (Exception ignored) {}
-            }
-            importedFileName = savedInstanceState.getString("importedFileName", "");
-            String draftsJson = savedInstanceState.getString("drafts", "[]");
-            try {
-                JSONArray arr = new JSONArray(draftsJson);
-                for (int i = 0; i < arr.length(); i++) {
-                    drafts.add(Expense.fromJson(arr.getJSONObject(i)));
+        try {
+            // 1. Build and attach the UI first so the Window DecorView is installed
+            initUi();
+
+            // 2. Safely apply system bar colors with null checks
+            setupWindowBars();
+
+            // 3. Load saved expenses
+            loadSavedExpenses();
+
+            if (savedInstanceState != null) {
+                String monthStr = savedInstanceState.getString("selectedMonth", "");
+                if (!monthStr.isEmpty()) {
+                    try { selectedMonth = YearMonth.parse(monthStr); } catch (Exception ignored) {}
                 }
-            } catch (Exception ignored) {}
-        }
+                importedFileName = savedInstanceState.getString("importedFileName", "");
+                String draftsJson = savedInstanceState.getString("drafts", "[]");
+                try {
+                    JSONArray arr = new JSONArray(draftsJson);
+                    for (int i = 0; i < arr.length(); i++) {
+                        drafts.add(Expense.fromJson(arr.getJSONObject(i)));
+                    }
+                } catch (Exception ignored) {}
+            }
 
-        initUi();
-        updateDashboard();
-        renderTransactions();
-        if (!drafts.isEmpty()) {
-            draftSection.setVisibility(View.VISIBLE);
-            renderDrafts();
+            updateDashboard();
+            renderTransactions();
+            if (!drafts.isEmpty()) {
+                draftSection.setVisibility(View.VISIBLE);
+                renderDrafts();
+            }
+        } catch (Throwable t) {
+            android.util.Log.e("BaniPeScurt", "Fatal error during onCreate", t);
+            showCrashFallbackUi(t);
         }
+    }
+
+    private void setupWindowBars() {
+        try {
+            getWindow().setStatusBarColor(PAPER);
+            getWindow().setNavigationBarColor(Color.WHITE);
+            View decorView = getWindow().getDecorView();
+            if (decorView != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    android.view.WindowInsetsController controller = decorView.getWindowInsetsController();
+                    if (controller == null) {
+                        controller = getWindow().getInsetsController();
+                    }
+                    if (controller != null) {
+                        controller.setSystemBarsAppearance(
+                                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
+                                        android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
+                                        android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                        );
+                    } else {
+                        decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+                    }
+                } else {
+                    decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+                }
+            }
+        } catch (Throwable ignored) {
+            // Prevent crashes from system bar styling on custom OEM ROMs (MIUI/HyperOS)
+        }
+    }
+
+    private void showCrashFallbackUi(Throwable t) {
+        try {
+            ScrollView sv = new ScrollView(this);
+            sv.setBackgroundColor(PAPER);
+            sv.setFillViewport(true);
+
+            LinearLayout layout = new LinearLayout(this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            layout.setPadding(dp(20), dp(40), dp(20), dp(20));
+
+            TextView title = new TextView(this);
+            title.setText("Bani pe scurt — Diagnostic");
+            title.setTextSize(18);
+            title.setTextColor(Color.rgb(180, 40, 40));
+            title.setTypeface(Typeface.DEFAULT_BOLD);
+            layout.addView(title);
+
+            TextView subtitle = new TextView(this);
+            subtitle.setText("Aplicația a întâmpinat o problemă la pornire:");
+            subtitle.setTextSize(13);
+            subtitle.setTextColor(INK);
+            layout.addView(subtitle, margin(MATCH, WRAP, 0, dp(8), 0, dp(12)));
+
+            TextView details = new TextView(this);
+            details.setText(android.util.Log.getStackTraceString(t));
+            details.setTextSize(11);
+            details.setTypeface(Typeface.MONOSPACE);
+            details.setTextColor(Color.rgb(80, 80, 80));
+            details.setPadding(dp(12), dp(12), dp(12), dp(12));
+            details.setBackground(round(Color.WHITE, dp(8), LINE));
+            layout.addView(details, margin(MATCH, WRAP, 0, 0, 0, dp(16)));
+
+            Button retryBtn = button("Resetează datele locale și repornește", true);
+            retryBtn.setOnClickListener(v -> {
+                getSharedPreferences(PREF_NAME, MODE_PRIVATE).edit().clear().apply();
+                recreate();
+            });
+            layout.addView(retryBtn, new LinearLayout.LayoutParams(MATCH, dp(48)));
+
+            sv.addView(layout);
+            setContentView(sv);
+        } catch (Throwable ignored) {}
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        IntentFilter filter = new IntentFilter(BankNotificationListener.ACTION_EXPENSE_ADDED);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(expenseReceiver, filter, RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(expenseReceiver, filter);
-        }
+        try {
+            IntentFilter filter = new IntentFilter(BankNotificationListener.ACTION_EXPENSE_ADDED);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(expenseReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(expenseReceiver, filter);
+            }
+        } catch (Throwable ignored) {}
 
-        loadSavedExpenses();
-        updateDashboard();
-        renderTransactions();
-        updateSyncCard();
+        try {
+            loadSavedExpenses();
+            updateDashboard();
+            renderTransactions();
+            updateSyncCard();
+        } catch (Throwable t) {
+            android.util.Log.e("BaniPeScurt", "Error in onResume", t);
+        }
     }
 
     @Override
@@ -369,9 +451,13 @@ public final class MainActivity extends Activity {
     }
 
     private boolean isNotificationListenerEnabled() {
-        String pkgName = getPackageName();
-        String flat = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
-        return flat != null && flat.contains(pkgName);
+        try {
+            String pkgName = getPackageName();
+            String flat = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
+            return flat != null && flat.contains(pkgName);
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private void updateSyncCard() {
