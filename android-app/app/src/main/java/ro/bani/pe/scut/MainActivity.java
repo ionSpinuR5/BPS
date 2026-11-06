@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -167,6 +168,7 @@ public final class MainActivity extends Activity {
     private YearMonth selectedMonth = YearMonth.now();
     private String currentSearchQuery = "";
     private String selectedCategoryFilter = "Toate";
+    private String selectedCurrencyTab = "RON"; // "RON" or "VALUTA"
     private String importedFileName = "";
     private long monthlyBudgetBani = 0; // 0 = no budget set
 
@@ -181,6 +183,7 @@ public final class MainActivity extends Activity {
     private LinearLayout budgetCard;
     private LinearLayout filterSummaryCard;
     private TextView filterSummaryText;
+    private TextView totalLabel;
     private TextView totalText;
     private TextView countText;
     private TextView avgDailyText;
@@ -192,6 +195,8 @@ public final class MainActivity extends Activity {
     private ProgressBar progressBar;
     private Button draftSaveBtnTop;
     private Button draftSaveBtnBottom;
+    private Button ronTabBtn;
+    private Button valutaTabBtn;
 
     // Real-time notification broadcast listener
     private final BroadcastReceiver expenseReceiver = new BroadcastReceiver() {
@@ -226,6 +231,13 @@ public final class MainActivity extends Activity {
 
             // 2. Safely configure system bars
             setupWindowBars();
+
+            // 2.5 Request POST_NOTIFICATIONS runtime permission on Android 13+ (API 33+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+                }
+            }
 
             // 3. Load saved expenses & budget
             loadSavedExpenses();
@@ -484,14 +496,54 @@ public final class MainActivity extends Activity {
         monthBar.addView(monthText, new LinearLayout.LayoutParams(0, WRAP, 1));
         monthBar.addView(nextBtn, new LinearLayout.LayoutParams(dp(36), dp(36)));
         monthBar.addView(currentMonthBtn, margin(WRAP, dp(32), dp(8), 0, 0, 0));
-        root.addView(monthBar, margin(MATCH, WRAP, 0, 0, 0, dp(12)));
+        root.addView(monthBar, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
+
+        // 2.5 Currency Tabs Switcher (RON vs VALUTĂ)
+        LinearLayout currencyTabContainer = new LinearLayout(this);
+        currencyTabContainer.setOrientation(LinearLayout.HORIZONTAL);
+        currencyTabContainer.setGravity(Gravity.CENTER);
+        currencyTabContainer.setPadding(dp(4), dp(4), dp(4), dp(4));
+        currencyTabContainer.setBackground(round(surfaceColor(), dp(14), borderColor()));
+
+        ronTabBtn = new Button(this);
+        ronTabBtn.setText("🇷🇴 Cheltuieli Lei (RON)");
+        ronTabBtn.setTextSize(12);
+        ronTabBtn.setAllCaps(false);
+        ronTabBtn.setPadding(dp(10), dp(6), dp(10), dp(6));
+        ronTabBtn.setOnClickListener(v -> {
+            selectedCurrencyTab = "RON";
+            renderCurrencyTabs();
+            updateDashboard();
+            renderTransactions();
+        });
+
+        valutaTabBtn = new Button(this);
+        valutaTabBtn.setText("🌍 Alte Valute (EUR / USD)");
+        valutaTabBtn.setTextSize(12);
+        valutaTabBtn.setAllCaps(false);
+        valutaTabBtn.setPadding(dp(10), dp(6), dp(10), dp(6));
+        valutaTabBtn.setOnClickListener(v -> {
+            selectedCurrencyTab = "VALUTA";
+            renderCurrencyTabs();
+            updateDashboard();
+            renderTransactions();
+        });
+
+        LinearLayout.LayoutParams tabParams1 = new LinearLayout.LayoutParams(0, dp(36), 1f);
+        LinearLayout.LayoutParams tabParams2 = new LinearLayout.LayoutParams(0, dp(36), 1.1f);
+        tabParams2.leftMargin = dp(4);
+
+        currencyTabContainer.addView(ronTabBtn, tabParams1);
+        currencyTabContainer.addView(valutaTabBtn, tabParams2);
+        root.addView(currencyTabContainer, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
+        renderCurrencyTabs();
 
         // 3. Hero Card: Total Monthly Spending & Insights
         LinearLayout totalCard = card();
         totalCard.setBackground(round(surfaceColor(), dp(16), borderColor()));
         totalCard.setPadding(dp(18), dp(16), dp(18), dp(16));
 
-        TextView totalLabel = text("TOTAL LUNA ACEASTA", 11, textMuted(), true);
+        totalLabel = text("TOTAL LUNA ACEASTA", 11, textMuted(), true);
         totalLabel.setLetterSpacing(0.06f);
         totalCard.addView(totalLabel);
 
@@ -721,6 +773,19 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void renderCurrencyTabs() {
+        if (ronTabBtn == null || valutaTabBtn == null) return;
+        boolean isRon = "RON".equalsIgnoreCase(selectedCurrencyTab);
+
+        ronTabBtn.setTypeface(Typeface.DEFAULT, isRon ? Typeface.BOLD : Typeface.NORMAL);
+        ronTabBtn.setTextColor(isRon ? Color.WHITE : textMuted());
+        ronTabBtn.setBackground(isRon ? round(primaryGreen(), dp(10), primaryGreen()) : round(Color.TRANSPARENT, dp(10), Color.TRANSPARENT));
+
+        valutaTabBtn.setTypeface(Typeface.DEFAULT, !isRon ? Typeface.BOLD : Typeface.NORMAL);
+        valutaTabBtn.setTextColor(!isRon ? Color.WHITE : textMuted());
+        valutaTabBtn.setBackground(!isRon ? round(primaryGreen(), dp(10), primaryGreen()) : round(Color.TRANSPARENT, dp(10), Color.TRANSPARENT));
+    }
+
     private boolean isNotificationListenerEnabled() {
         try {
             String pkgName = getPackageName();
@@ -854,14 +919,24 @@ public final class MainActivity extends Activity {
         });
         actionRow.addView(rebindBtn, new LinearLayout.LayoutParams(0, dp(36), 1f));
 
-        Button testBtn = smallHeaderButton("⚡ Notificare test");
+        Button testBtn = smallHeaderButton("⚡ Notificare bară");
         testBtn.setOnClickListener(v -> {
             BankNotificationListener.postSimulatedPaymentNotification(this);
-            Toast.makeText(this, "Am trimis notificare reală de 35,50 lei! Trage în jos bara de sus a telefonului.", Toast.LENGTH_LONG).show();
         });
-        LinearLayout.LayoutParams testParams = new LinearLayout.LayoutParams(0, dp(36), 1.2f);
-        testParams.leftMargin = dp(8);
+        LinearLayout.LayoutParams testParams = new LinearLayout.LayoutParams(0, dp(36), 1.1f);
+        testParams.leftMargin = dp(6);
         actionRow.addView(testBtn, testParams);
+
+        Button directBtn = smallHeaderButton("🧪 Test direct");
+        directBtn.setOnClickListener(v -> {
+            BankNotificationListener.simulateDirectPayment(this, 3550, "Mega Image [TEST]", "Mâncare", "RON");
+            loadSavedExpenses();
+            updateDashboard();
+            renderTransactions();
+        });
+        LinearLayout.LayoutParams directParams = new LinearLayout.LayoutParams(0, dp(36), 1f);
+        directParams.leftMargin = dp(6);
+        actionRow.addView(directBtn, directParams);
 
         layout.addView(actionRow, margin(MATCH, WRAP, 0, 0, 0, dp(14)));
 
@@ -1269,7 +1344,7 @@ public final class MainActivity extends Activity {
         right.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
 
         TextView amountView = new TextView(this);
-        amountView.setText(moneyBani(expense.amountBani));
+        amountView.setText(expense.formatAmount());
         amountView.setTextSize(14);
         amountView.setTextColor(textMain());
         amountView.setTypeface(Typeface.DEFAULT_BOLD);
@@ -1407,6 +1482,14 @@ public final class MainActivity extends Activity {
         String monthName = selectedMonth.format(DateTimeFormatter.ofPattern("LLLL yyyy", locale));
         monthText.setText(monthName.substring(0, 1).toUpperCase(locale) + monthName.substring(1) + " ▾");
 
+        boolean isRonTab = "RON".equalsIgnoreCase(selectedCurrencyTab);
+        if (totalLabel != null) {
+            totalLabel.setText(isRonTab ? "TOTAL LUNA ACEASTA (LEI)" : "TOTAL VALUTĂ LUNA ACEASTA");
+        }
+        if (transactionListTitle != null) {
+            transactionListTitle.setText(isRonTab ? "ISTORIC CHELTUIELI (LEI)" : "ISTORIC CHELTUIELI ÎN VALUTĂ");
+        }
+
         List<Expense> month = monthExpenses();
         long totalBani = 0;
         Map<String, Long> byCategory = new LinkedHashMap<>();
@@ -1420,11 +1503,34 @@ public final class MainActivity extends Activity {
             }
         }
 
-        totalText.setText(moneyBani(totalBani));
+        if (isRonTab) {
+            totalText.setText(moneyBani(totalBani));
+        } else {
+            Map<String, Long> byCurr = new LinkedHashMap<>();
+            for (Expense e : month) {
+                String c = (e.currency != null && !e.currency.isEmpty()) ? e.currency.toUpperCase() : "EUR";
+                byCurr.put(c, byCurr.getOrDefault(c, 0L) + e.amountBani);
+            }
+            if (byCurr.isEmpty()) {
+                totalText.setText("0,00 €");
+            } else {
+                StringBuilder sb = new StringBuilder();
+                for (Map.Entry<String, Long> ent : byCurr.entrySet()) {
+                    if (sb.length() > 0) sb.append("  ·  ");
+                    double val = ent.getValue() / 100.0;
+                    if ("EUR".equalsIgnoreCase(ent.getKey())) sb.append(String.format(Locale.GERMANY, "%,.2f €", val));
+                    else if ("USD".equalsIgnoreCase(ent.getKey())) sb.append(String.format(Locale.US, "$%,.2f", val));
+                    else if ("GBP".equalsIgnoreCase(ent.getKey())) sb.append(String.format(Locale.UK, "£%,.2f", val));
+                    else sb.append(String.format(Locale.GERMANY, "%,.2f %s", val, ent.getKey()));
+                }
+                totalText.setText(sb.toString());
+            }
+        }
+
         countText.setText(month.size() + (month.size() == 1 ? " cheltuială înregistrată" : " cheltuieli înregistrate"));
 
-        // Daily average calculation
-        if (totalBani > 0) {
+        // Daily average calculation (only on RON tab)
+        if (isRonTab && totalBani > 0) {
             int days = selectedMonth.lengthOfMonth();
             if (selectedMonth.equals(YearMonth.now())) {
                 days = Math.max(1, LocalDate.now().getDayOfMonth());
@@ -1438,14 +1544,19 @@ public final class MainActivity extends Activity {
 
         // Top Single Expense Insight
         if (maxExpense != null && maxExpense.amountBani > 0) {
-            topExpenseText.setText("⭐ Cea mai mare: " + moneyBani(maxExpense.amountBani) + " · " + maxExpense.description);
+            topExpenseText.setText("⭐ Cea mai mare: " + maxExpense.formatAmount() + " · " + maxExpense.description);
             topExpenseText.setVisibility(View.VISIBLE);
         } else {
             topExpenseText.setVisibility(View.GONE);
         }
 
-        // Budget Section
-        updateBudgetSection(totalBani);
+        // Budget Section (only on RON tab)
+        if (!isRonTab) {
+            budgetCard.setVisibility(View.GONE);
+        } else {
+            budgetCard.setVisibility(View.VISIBLE);
+            updateBudgetSection(totalBani);
+        }
 
         // Render graphical category progress bars
         renderCategoryBreakdown(byCategory, totalBani);
@@ -1581,9 +1692,16 @@ public final class MainActivity extends Activity {
     private List<Expense> monthExpenses() {
         List<Expense> month = new ArrayList<>();
         String prefix = selectedMonth.toString();
+        boolean isRonTab = "RON".equalsIgnoreCase(selectedCurrencyTab);
+
         for (Expense expense : expenses) {
             if (expense.date != null && expense.date.startsWith(prefix)) {
-                month.add(expense);
+                boolean isExpenseRon = expense.currency == null || "RON".equalsIgnoreCase(expense.currency);
+                if (isRonTab && isExpenseRon) {
+                    month.add(expense);
+                } else if (!isRonTab && !isExpenseRon) {
+                    month.add(expense);
+                }
             }
         }
         return month;
@@ -1617,14 +1735,29 @@ public final class MainActivity extends Activity {
         layout.addView(descInput, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
 
         final EditText amountInput = new EditText(this);
-        amountInput.setHint("Sumă în lei (ex: 35.50)");
+        amountInput.setHint("Sumă (ex: 35.50)");
         amountInput.setHintTextColor(textMuted());
         amountInput.setTextColor(textMain());
         amountInput.setTextSize(14);
         amountInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
         amountInput.setPadding(dp(12), dp(10), dp(12), dp(10));
         amountInput.setBackground(round(inputBg(), dp(8), borderColor()));
-        layout.addView(amountInput, margin(MATCH, WRAP, 0, 0, 0, dp(12)));
+        layout.addView(amountInput, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
+
+        final String[] currencies = {"RON", "EUR", "USD", "GBP"};
+        final int[] selectedCurrIdx = { "VALUTA".equalsIgnoreCase(selectedCurrencyTab) ? 1 : 0 };
+        TextView currSelector = text("Monedă: " + currencies[selectedCurrIdx[0]] + " ▾", 12, primaryDark(), true);
+        currSelector.setPadding(dp(12), dp(8), dp(12), dp(8));
+        currSelector.setBackground(round(accentLight(), dp(8), borderColor()));
+        currSelector.setOnClickListener(v -> {
+            createDialogBuilder("Selectează moneda")
+                    .setSingleChoiceItems(currencies, selectedCurrIdx[0], (d, which) -> {
+                        selectedCurrIdx[0] = which;
+                        currSelector.setText("Monedă: " + currencies[which] + " ▾");
+                        d.dismiss();
+                    }).show();
+        });
+        layout.addView(currSelector, margin(MATCH, WRAP, 0, 0, 0, dp(10)));
 
         TextView catLabel = text("Alege categoria:", 12, textMuted(), true);
         layout.addView(catLabel, margin(MATCH, WRAP, 0, 0, 0, dp(6)));
@@ -1660,6 +1793,7 @@ public final class MainActivity extends Activity {
                 expense.date = LocalDate.now().toString();
                 expense.description = desc;
                 expense.category = cat;
+                expense.currency = currencies[selectedCurrIdx[0]];
                 expense.setAmount(amt);
                 expense.income = false;
 
@@ -1667,7 +1801,7 @@ public final class MainActivity extends Activity {
                 saveExpenses();
                 updateDashboard();
                 renderTransactions();
-                Toast.makeText(this, "Cheltuială adăugată!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Cheltuială adăugată: " + expense.formatAmount(), Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
                 Toast.makeText(this, "Sumă invalidă.", Toast.LENGTH_SHORT).show();
             }

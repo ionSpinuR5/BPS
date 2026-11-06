@@ -9,8 +9,10 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -91,11 +93,25 @@ public final class BankNotificationListener extends NotificationListenerService 
         KNOWN_BANK_PACKAGES.add("com.miui.mms");
     }
 
-    // Prioritize RON / LEI amounts first so foreign exchange (e.g. 1 EUR in 5.31 RON) extracts 5.31 RON
+    // Currency-specific patterns
     private static final Pattern PATTERN_AMOUNT_THEN_RON = Pattern.compile("(?i)(\\d+[\\d.,]*)\\s*(?:lei|ron)");
     private static final Pattern PATTERN_RON_THEN_AMOUNT = Pattern.compile("(?i)(?:lei|ron)\\s*(\\d+[\\d.,]*)");
-    private static final Pattern PATTERN_AMOUNT_THEN_FOREIGN = Pattern.compile("(?i)(\\d+[\\d.,]*)\\s*(?:eur|€|\\$|usd|gbp|£)");
-    private static final Pattern PATTERN_FOREIGN_THEN_AMOUNT = Pattern.compile("(?i)(?:eur|€|\\$|usd|gbp|£)\\s*(\\d+[\\d.,]*)");
+    private static final Pattern PATTERN_AMOUNT_THEN_EUR = Pattern.compile("(?i)(\\d+[\\d.,]*)\\s*(?:eur|€)");
+    private static final Pattern PATTERN_EUR_THEN_AMOUNT = Pattern.compile("(?i)(?:eur|€)\\s*(\\d+[\\d.,]*)");
+    private static final Pattern PATTERN_AMOUNT_THEN_USD = Pattern.compile("(?i)(\\d+[\\d.,]*)\\s*(?:usd|\\$)");
+    private static final Pattern PATTERN_USD_THEN_AMOUNT = Pattern.compile("(?i)(?:usd|\\$)\\s*(\\d+[\\d.,]*)");
+    private static final Pattern PATTERN_AMOUNT_THEN_GBP = Pattern.compile("(?i)(\\d+[\\d.,]*)\\s*(?:gbp|£)");
+    private static final Pattern PATTERN_GBP_THEN_AMOUNT = Pattern.compile("(?i)(?:gbp|£)\\s*(\\d+[\\d.,]*)");
+
+    public static class CurrencyResult {
+        public final long amountCents;
+        public final String currency; // "RON", "EUR", "USD", "GBP"
+
+        public CurrencyResult(long amountCents, String currency) {
+            this.amountCents = amountCents;
+            this.currency = currency;
+        }
+    }
 
     private static final Pattern MERCHANT_REGEX = Pattern.compile(
             "(?i)(?:la|at|catre|to|comerciant|merchant)\\s+([A-Za-z0-9\\u00C0-\\u024F\\s.,&'\\-_]+?)" +
@@ -149,7 +165,9 @@ public final class BankNotificationListener extends NotificationListenerService 
 
         boolean isKnownBank = packageName != null && KNOWN_BANK_PACKAGES.contains(packageName);
         boolean hasPaymentKeyword = containsPaymentKeyword(lowerContent);
-        long amountBani = extractAmountBani(fullContent);
+        CurrencyResult currencyResult = extractAmountAndCurrency(fullContent);
+        long amountBani = currencyResult.amountCents;
+        String currency = currencyResult.currency;
 
         // Skip incoming transfers / salaries / income
         if (lowerContent.contains("incasare") || lowerContent.contains("transfer primit") ||
@@ -180,7 +198,7 @@ public final class BankNotificationListener extends NotificationListenerService 
         merchant = cleanMerchant(merchant);
 
         // Deduplication: prevent duplicate notifications within 5 seconds
-        String dedupeKey = amountBani + "|" + merchant;
+        String dedupeKey = amountBani + "|" + currency + "|" + merchant;
         long now = System.currentTimeMillis();
         if (dedupeKey.equals(lastCapturedKey) && (now - lastCapturedTime) < 5000) {
             addDiagnosticLog(this, packageName, title, text, "DUPLICAT: Aceeași tranzacție recepționată în <5s");
@@ -192,11 +210,11 @@ public final class BankNotificationListener extends NotificationListenerService 
         // Auto-categorize
         String category = ExpenseCategories.suggest(this, merchant);
 
-        // Save Expense
+        // Save Expense with detected currency
         String dateIso = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date(now));
         String id = "LIVE|" + now + "|" + (amountBani / 100.0);
 
-        Expense expense = new Expense(id, dateIso, merchant, category, amountBani, false);
+        Expense expense = new Expense(id, dateIso, merchant, category, amountBani, false, currency);
         saveExpenseToStorage(expense);
 
         // Broadcast to MainActivity
@@ -206,8 +224,7 @@ public final class BankNotificationListener extends NotificationListenerService 
         showSuccessNotification(expense);
 
         // Log to diagnostics
-        double lei = amountBani / 100.0;
-        addDiagnosticLog(this, packageName, title, text, String.format(Locale.US, "CAPURAT ✅: %.2f lei la %s [%s]", lei, merchant, category));
+        addDiagnosticLog(this, packageName, title, text, String.format(Locale.US, "CAPTURAT ✅: %s la %s [%s]", expense.formatAmount(), merchant, category));
     }
 
     private static boolean containsPaymentKeyword(String s) {
@@ -221,40 +238,62 @@ public final class BankNotificationListener extends NotificationListenerService 
                 s.contains("sent") || s.contains("send");
     }
 
-    public static long extractAmountBani(String text) {
-        if (text == null || text.isEmpty()) return 0;
+    public static CurrencyResult extractAmountAndCurrency(String text) {
+        if (text == null || text.isEmpty()) return new CurrencyResult(0, "RON");
 
         // 1. Prioritize RON / LEI first (e.g. 5.31 RON or lei 5.31)
         Matcher mRon1 = PATTERN_AMOUNT_THEN_RON.matcher(text);
         if (mRon1.find()) {
-            String raw = mRon1.group(1);
-            long val = parseAmountStringToBani(raw);
-            if (val > 0) return val;
+            long val = parseAmountStringToBani(mRon1.group(1));
+            if (val > 0) return new CurrencyResult(val, "RON");
         }
-
         Matcher mRon2 = PATTERN_RON_THEN_AMOUNT.matcher(text);
         if (mRon2.find()) {
-            String raw = mRon2.group(1);
-            long val = parseAmountStringToBani(raw);
-            if (val > 0) return val;
+            long val = parseAmountStringToBani(mRon2.group(1));
+            if (val > 0) return new CurrencyResult(val, "RON");
         }
 
-        // 2. Foreign currency fallback (e.g. 10.00 EUR, €12.50, $25)
-        Matcher mFor1 = PATTERN_AMOUNT_THEN_FOREIGN.matcher(text);
-        if (mFor1.find()) {
-            String raw = mFor1.group(1);
-            long val = parseAmountStringToBani(raw);
-            if (val > 0) return val;
+        // 2. EUR / €
+        Matcher mEur1 = PATTERN_AMOUNT_THEN_EUR.matcher(text);
+        if (mEur1.find()) {
+            long val = parseAmountStringToBani(mEur1.group(1));
+            if (val > 0) return new CurrencyResult(val, "EUR");
+        }
+        Matcher mEur2 = PATTERN_EUR_THEN_AMOUNT.matcher(text);
+        if (mEur2.find()) {
+            long val = parseAmountStringToBani(mEur2.group(1));
+            if (val > 0) return new CurrencyResult(val, "EUR");
         }
 
-        Matcher mFor2 = PATTERN_FOREIGN_THEN_AMOUNT.matcher(text);
-        if (mFor2.find()) {
-            String raw = mFor2.group(1);
-            long val = parseAmountStringToBani(raw);
-            if (val > 0) return val;
+        // 3. USD / $
+        Matcher mUsd1 = PATTERN_AMOUNT_THEN_USD.matcher(text);
+        if (mUsd1.find()) {
+            long val = parseAmountStringToBani(mUsd1.group(1));
+            if (val > 0) return new CurrencyResult(val, "USD");
+        }
+        Matcher mUsd2 = PATTERN_USD_THEN_AMOUNT.matcher(text);
+        if (mUsd2.find()) {
+            long val = parseAmountStringToBani(mUsd2.group(1));
+            if (val > 0) return new CurrencyResult(val, "USD");
         }
 
-        return 0;
+        // 4. GBP / £
+        Matcher mGbp1 = PATTERN_AMOUNT_THEN_GBP.matcher(text);
+        if (mGbp1.find()) {
+            long val = parseAmountStringToBani(mGbp1.group(1));
+            if (val > 0) return new CurrencyResult(val, "GBP");
+        }
+        Matcher mGbp2 = PATTERN_GBP_THEN_AMOUNT.matcher(text);
+        if (mGbp2.find()) {
+            long val = parseAmountStringToBani(mGbp2.group(1));
+            if (val > 0) return new CurrencyResult(val, "GBP");
+        }
+
+        return new CurrencyResult(0, "RON");
+    }
+
+    public static long extractAmountBani(String text) {
+        return extractAmountAndCurrency(text).amountCents;
     }
 
     public static long parseAmountStringToBani(String raw) {
@@ -365,8 +404,7 @@ public final class BankNotificationListener extends NotificationListenerService 
             manager.createNotificationChannel(channel);
         }
 
-        double lei = expense.amountBani / 100.0;
-        String content = String.format(Locale.US, "%.2f lei · %s (%s)", lei, expense.description, expense.category);
+        String content = String.format(Locale.US, "%s · %s (%s)", expense.formatAmount(), expense.description, expense.category);
 
         Notification.Builder builder;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -375,9 +413,12 @@ public final class BankNotificationListener extends NotificationListenerService 
             builder = new Notification.Builder(this);
         }
 
+        int iconRes = getApplicationInfo().icon;
+        if (iconRes == 0) iconRes = android.R.drawable.ic_dialog_info;
+
         builder.setContentTitle("Bani pe scurt — Plată detectată ⚡")
                 .setContentText(content)
-                .setSmallIcon(android.R.drawable.stat_notify_sync)
+                .setSmallIcon(iconRes)
                 .setAutoCancel(true);
 
         try {
@@ -424,24 +465,81 @@ public final class BankNotificationListener extends NotificationListenerService 
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
 
-        String testChannelId = "bani_pe_scurt_test_sim";
+        // Check POST_NOTIFICATIONS permission on Android 13+ (API 33+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                if (context instanceof android.app.Activity) {
+                    ((android.app.Activity) context).requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+                    Toast.makeText(context, "Apasă 'Permite' pe ecran pentru a lăsa aplicația să trimită notificări!", Toast.LENGTH_LONG).show();
+                    return;
+                }
+            }
+        }
+
+        // Check if system notifications are enabled for the app
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!manager.areNotificationsEnabled()) {
+                Toast.makeText(context, "Notificările sunt dezactivate în setările telefonului! Te redirecționez...", Toast.LENGTH_LONG).show();
+                try {
+                    Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, context.getPackageName());
+                    context.startActivity(intent);
+                } catch (Exception ignored) {}
+                return;
+            }
+        }
+
+        String testChannelId = "bani_pe_scurt_test_sim_v3";
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(testChannelId, "Test Simulare Plată", NotificationManager.IMPORTANCE_HIGH);
             ch.setDescription("Canal pentru testarea ascultătorului de notificări");
+            ch.enableVibration(true);
+            ch.enableLights(true);
+            ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             manager.createNotificationChannel(ch);
         }
+
+        int iconRes = context.getApplicationInfo().icon;
+        if (iconRes == 0) iconRes = android.R.drawable.ic_dialog_info;
 
         Notification.Builder builder = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 ? new Notification.Builder(context, testChannelId)
                 : new Notification.Builder(context);
 
-        builder.setContentTitle("Mega Image [TEST]")
-                .setContentText("Plată aprobată: 35,50 lei la Mega Image cu cardul *9999")
-                .setSmallIcon(android.R.drawable.stat_notify_sync)
+        builder.setContentTitle("Banca Ta [TEST]")
+                .setContentText("Plată aprobată: 35,50 lei la Mega Image cu cardul")
+                .setSmallIcon(iconRes)
+                .setPriority(Notification.PRIORITY_MAX)
                 .setAutoCancel(true);
 
         try {
-            manager.notify(777, builder.build());
+            manager.notify((int) System.currentTimeMillis(), builder.build());
+            Toast.makeText(context, "Notificare trimisă cu succes! Trage în jos bara de sus.", Toast.LENGTH_LONG).show();
+        } catch (Throwable t) {
+            Toast.makeText(context, "Eroare la trimitere notificare: " + t.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    public static void simulateDirectPayment(Context context, long amountBani, String merchant, String category, String currency) {
+        long now = System.currentTimeMillis();
+        String dateIso = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(new Date(now));
+        String id = "SIM|" + now + "|" + (amountBani / 100.0);
+        Expense expense = new Expense(id, dateIso, merchant, category, amountBani, false, currency);
+
+        // Save directly to SharedPreferences
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+            String saved = prefs.getString("expenses", null);
+            if (saved == null) {
+                saved = context.getSharedPreferences("MainActivity", Context.MODE_PRIVATE).getString("expenses", "[]");
+            }
+            JSONArray array = new JSONArray(saved);
+            array.put(expense.toJson());
+            prefs.edit().putString("expenses", array.toString()).apply();
         } catch (Exception ignored) {}
+
+        context.sendBroadcast(new Intent(ACTION_EXPENSE_ADDED));
+        addDiagnosticLog(context, context.getPackageName(), "Simulare Directă", "Plată test", "CAPTURAT ✅: " + expense.formatAmount() + " la " + merchant + " [" + category + "]");
+        Toast.makeText(context, "✓ Tranzacție adăugată direct: " + expense.formatAmount() + " la " + merchant, Toast.LENGTH_LONG).show();
     }
 }

@@ -11,19 +11,40 @@ final class Expense {
     String date; // YYYY-MM-DD
     String description;
     String category;
-    long amountBani; // 100 bani = 1 RON, prevents floating-point inaccuracies
+    long amountBani; // integer cents (bani, eurocents, cents)
     double amount;   // Kept synchronized for compatibility
     boolean income;
+    String currency = "RON"; // "RON", "EUR", "USD", "GBP"
 
     Expense() {}
 
     Expense(String id, String date, String description, String category, long amountBani, boolean income) {
+        this(id, date, description, category, amountBani, income, "RON");
+    }
+
+    Expense(String id, String date, String description, String category, long amountBani, boolean income, String currency) {
         this.id = id;
         this.date = date;
         this.description = description;
         this.category = category;
         setAmountBani(amountBani);
         this.income = income;
+        this.currency = (currency != null && !currency.trim().isEmpty()) ? currency.trim().toUpperCase() : "RON";
+    }
+
+    String getCurrencySymbol() {
+        if ("EUR".equalsIgnoreCase(currency)) return "€";
+        if ("USD".equalsIgnoreCase(currency)) return "$";
+        if ("GBP".equalsIgnoreCase(currency)) return "£";
+        return "lei";
+    }
+
+    String formatAmount() {
+        double val = amountBani / 100.0;
+        if ("EUR".equalsIgnoreCase(currency)) return String.format(java.util.Locale.GERMANY, "%,.2f €", val);
+        if ("USD".equalsIgnoreCase(currency)) return String.format(java.util.Locale.US, "$%,.2f", val);
+        if ("GBP".equalsIgnoreCase(currency)) return String.format(java.util.Locale.UK, "£%,.2f", val);
+        return String.format(java.util.Locale.GERMANY, "%,.2f lei", val);
     }
 
     void setAmountBani(long bani) {
@@ -49,6 +70,7 @@ final class Expense {
         object.put("amount", amount);
         object.put("amountBani", amountBani);
         object.put("income", income);
+        object.put("currency", currency != null ? currency : "RON");
         return object;
     }
 
@@ -64,6 +86,7 @@ final class Expense {
             expense.setAmount(object.getDouble("amount"));
         }
         expense.income = object.optBoolean("income", false);
+        expense.currency = object.optString("currency", "RON");
         return expense;
     }
 }
