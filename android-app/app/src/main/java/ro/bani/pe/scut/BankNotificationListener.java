@@ -214,7 +214,9 @@ public final class BankNotificationListener extends NotificationListenerService 
                 s.contains("pos") || s.contains("cumparat") || s.contains("debitat") ||
                 s.contains("card") || s.contains("spent") || s.contains("paid") ||
                 s.contains("payment") || s.contains("purchase") || s.contains("charged") ||
-                s.contains("transaction") || s.contains("tap to pay");
+                s.contains("transaction") || s.contains("tap to pay") ||
+                s.contains("transfer") || s.contains("trimis") || s.contains("virament") ||
+                s.contains("sent") || s.contains("send");
     }
 
     public static long extractAmountBani(String text) {
@@ -295,6 +297,11 @@ public final class BankNotificationListener extends NotificationListenerService 
                     !lowerTitle.contains("google")) {
                 return title;
             }
+        }
+
+        if (body.toLowerCase(Locale.ROOT).contains("transfer") || body.toLowerCase(Locale.ROOT).contains("trimis") ||
+                body.toLowerCase(Locale.ROOT).contains("virament")) {
+            return "Transfer bancar";
         }
 
         return "Plată comerciant";
