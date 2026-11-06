@@ -197,9 +197,14 @@ public final class MainActivity extends Activity {
     private final BroadcastReceiver expenseReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            if (intent != null && BankNotificationListener.ACTION_LISTENER_CONNECTED.equals(intent.getAction())) {
+                updateSyncCard();
+                return;
+            }
             loadSavedExpenses();
             updateDashboard();
             renderTransactions();
+            updateSyncCard();
             Toast.makeText(MainActivity.this, "Plată nouă detectată în timp real! ⚡", Toast.LENGTH_SHORT).show();
         }
     };
@@ -351,13 +356,25 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         try {
-            IntentFilter filter = new IntentFilter(BankNotificationListener.ACTION_EXPENSE_ADDED);
+            IntentFilter filter = new IntentFilter();
+            filter.addAction(BankNotificationListener.ACTION_EXPENSE_ADDED);
+            filter.addAction(BankNotificationListener.ACTION_LISTENER_CONNECTED);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(expenseReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
             } else {
                 registerReceiver(expenseReceiver, filter);
             }
         } catch (Throwable ignored) {}
+
+        if (isNotificationListenerEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                android.service.notification.NotificationListenerService.requestRebind(
+                        new android.content.ComponentName(this, BankNotificationListener.class)
+                );
+            } catch (Throwable t) {
+                android.util.Log.e("BaniPeScurt", "Rebind request failed", t);
+            }
+        }
 
         try {
             loadSavedExpenses();
@@ -719,30 +736,50 @@ public final class MainActivity extends Activity {
         syncCard.removeAllViews();
 
         boolean isEnabled = isNotificationListenerEnabled();
+        boolean isConnected = BankNotificationListener.isServiceConnected;
 
         if (isEnabled) {
             syncCard.setBackground(round(accentLight(), dp(14), primaryGreen()));
             syncCard.setPadding(dp(16), dp(12), dp(16), dp(12));
 
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout topRow = new LinearLayout(this);
+            topRow.setOrientation(LinearLayout.HORIZONTAL);
+            topRow.setGravity(Gravity.CENTER_VERTICAL);
 
             LinearLayout textCol = new LinearLayout(this);
             textCol.setOrientation(LinearLayout.VERTICAL);
 
-            TextView header = text("⚡ Sincronizare plăți activă", 12, primaryDark(), true);
+            String statusTitle = isConnected ? "⚡ Sincronizare plăți activă & conectată" : "⚡ Sincronizare activată (Necesită rebind)";
+            TextView header = text(statusTitle, 12, primaryDark(), true);
             textCol.addView(header);
 
-            TextView desc = text("Detectare automată la POS (Google Wallet & bănci)", 11, textMuted(), false);
+            String statusDesc = isConnected
+                    ? "Gata să detecteze plăți la POS (Google Wallet, bănci, SMS)"
+                    : "Serviciul necesită reconectare în fundal (Xiaomi HyperOS)";
+            TextView desc = text(statusDesc, 11, textMuted(), false);
             textCol.addView(desc);
-            row.addView(textCol, new LinearLayout.LayoutParams(0, WRAP, 1));
+            topRow.addView(textCol, new LinearLayout.LayoutParams(0, WRAP, 1));
 
-            Button testBtn = smallHeaderButton("Test live");
-            testBtn.setOnClickListener(v -> triggerTestPayment());
-            row.addView(testBtn, new LinearLayout.LayoutParams(WRAP, dp(32)));
+            syncCard.addView(topRow);
 
-            syncCard.addView(row);
+            // Action buttons row: [ Diagnostic & Jurnal ] + [ Trimite test ]
+            LinearLayout btnsRow = new LinearLayout(this);
+            btnsRow.setOrientation(LinearLayout.HORIZONTAL);
+
+            Button diagBtn = smallHeaderButton("🛠️ Diagnostic & Jurnal live");
+            diagBtn.setOnClickListener(v -> showNotificationDiagnosticDialog());
+            btnsRow.addView(diagBtn, new LinearLayout.LayoutParams(0, dp(34), 1f));
+
+            Button testBtn = smallHeaderButton("⚡ Trimite test");
+            testBtn.setOnClickListener(v -> {
+                BankNotificationListener.postSimulatedPaymentNotification(this);
+                Toast.makeText(this, "Am trimis notificare de test! Trage în jos bara de sus.", Toast.LENGTH_SHORT).show();
+            });
+            LinearLayout.LayoutParams testParams = new LinearLayout.LayoutParams(WRAP, dp(34));
+            testParams.leftMargin = dp(8);
+            btnsRow.addView(testBtn, testParams);
+
+            syncCard.addView(btnsRow, margin(MATCH, WRAP, 0, dp(8), 0, 0));
         } else {
             syncCard.setBackground(round(surfaceColor(), dp(14), borderColor()));
             syncCard.setPadding(dp(16), dp(14), dp(16), dp(14));
@@ -754,6 +791,9 @@ public final class MainActivity extends Activity {
             desc.setLineSpacing(dp(3), 1f);
             syncCard.addView(desc, margin(MATCH, WRAP, 0, dp(4), 0, dp(10)));
 
+            LinearLayout btnsRow = new LinearLayout(this);
+            btnsRow.setOrientation(LinearLayout.HORIZONTAL);
+
             Button enableBtn = button("Activează captarea automată →", true);
             enableBtn.setOnClickListener(v -> {
                 try {
@@ -763,8 +803,124 @@ public final class MainActivity extends Activity {
                     Toast.makeText(this, "Deschide Setări > Aplicații > Acces special.", Toast.LENGTH_SHORT).show();
                 }
             });
-            syncCard.addView(enableBtn, margin(MATCH, dp(42), 0, 0, 0, 0));
+            btnsRow.addView(enableBtn, new LinearLayout.LayoutParams(0, dp(44), 1.3f));
+
+            Button diagBtn = smallHeaderButton("Ghid Xiaomi 📱");
+            diagBtn.setOnClickListener(v -> showNotificationDiagnosticDialog());
+            LinearLayout.LayoutParams diagParams = new LinearLayout.LayoutParams(0, dp(44), 0.7f);
+            diagParams.leftMargin = dp(8);
+            btnsRow.addView(diagBtn, diagParams);
+
+            syncCard.addView(btnsRow);
         }
+    }
+
+    private void showNotificationDiagnosticDialog() {
+        AlertDialog.Builder builder = createDialogBuilder("Diagnostic Notificări în Timp Real");
+
+        ScrollView sv = new ScrollView(this);
+        sv.setFillViewport(true);
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(18), dp(14), dp(18), dp(16));
+
+        // 1. Status Section
+        boolean isEnabled = isNotificationListenerEnabled();
+        boolean isConnected = BankNotificationListener.isServiceConnected;
+
+        TextView permStatus = text("• Permisiune Android: " + (isEnabled ? "ACTIVATĂ ✅" : "DEZACTIVATĂ ❌"), 13, isEnabled ? primaryGreen() : DANGER_RED, true);
+        layout.addView(permStatus);
+
+        TextView connStatus = text("• Serviciu în fundal: " + (isConnected ? "CONECTAT ✅ (Activ)" : "DECONECTAT ⚠️ (Necesită rebind)"), 13, isConnected ? primaryGreen() : DANGER_RED, true);
+        layout.addView(connStatus, margin(MATCH, WRAP, 0, dp(4), 0, dp(10)));
+
+        // Action Buttons: Rebind & Test Notification
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button rebindBtn = smallHeaderButton("🔄 Reconectează");
+        rebindBtn.setOnClickListener(v -> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    android.service.notification.NotificationListenerService.requestRebind(
+                            new android.content.ComponentName(this, BankNotificationListener.class)
+                    );
+                    Toast.makeText(this, "Reconectare solicitată! Verifică din nou peste 2 secunde.", Toast.LENGTH_SHORT).show();
+                } catch (Throwable t) {
+                    Toast.makeText(this, "Eroare rebind: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        actionRow.addView(rebindBtn, new LinearLayout.LayoutParams(0, dp(36), 1f));
+
+        Button testBtn = smallHeaderButton("⚡ Notificare test");
+        testBtn.setOnClickListener(v -> {
+            BankNotificationListener.postSimulatedPaymentNotification(this);
+            Toast.makeText(this, "Am trimis notificare reală de 35,50 lei! Trage în jos bara de sus a telefonului.", Toast.LENGTH_LONG).show();
+        });
+        LinearLayout.LayoutParams testParams = new LinearLayout.LayoutParams(0, dp(36), 1.2f);
+        testParams.leftMargin = dp(8);
+        actionRow.addView(testBtn, testParams);
+
+        layout.addView(actionRow, margin(MATCH, WRAP, 0, 0, 0, dp(14)));
+
+        // 2. Xiaomi Specific Instructions
+        TextView xiaomiHeader = text("📱 Pași esențiali pe Xiaomi (HyperOS / MIUI):", 12, primaryDark(), true);
+        layout.addView(xiaomiHeader);
+
+        String xiaomiTips = "1. Mergi în Setări telefon > Aplicații > Gestionare aplicații > Bani pe scurt.\n" +
+                "2. Bifează „Pornire automată” (Autostart) – altfel Xiaomi oprește serviciul când închizi aplicația!\n" +
+                "3. La „Economizor baterie”, alege „Fără restricții”.\n" +
+                "4. Asigură-te că Google Wallet / aplicația băncii tale are permisiunea de a afișa notificări!";
+        TextView xiaomiText = text(xiaomiTips, 11, textMuted(), false);
+        xiaomiText.setLineSpacing(dp(3), 1f);
+        layout.addView(xiaomiText, margin(MATCH, WRAP, 0, dp(4), 0, dp(14)));
+
+        // 3. Notification Diagnostic Logs
+        TextView logsHeader = text("📋 Ultimele notificări văzute de telefon:", 12, textMain(), true);
+        layout.addView(logsHeader);
+
+        List<org.json.JSONObject> logs = BankNotificationListener.getDiagnosticLogs(this);
+        if (logs.isEmpty()) {
+            TextView noLogs = text("Nicio notificare nu a fost interceptată încă de la pornire.\nFă o plată sau trimite o notificare de test pentru a verifica.", 11, textMuted(), false);
+            noLogs.setLineSpacing(dp(3), 1f);
+            layout.addView(noLogs, margin(MATCH, WRAP, 0, dp(4), 0, 0));
+        } else {
+            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("HH:mm:ss", Locale.ROOT);
+            for (org.json.JSONObject log : logs) {
+                long time = log.optLong("time", 0);
+                String pkg = log.optString("pkg", "");
+                String title = log.optString("title", "");
+                String textStr = log.optString("text", "");
+                String status = log.optString("status", "");
+
+                LinearLayout logItem = new LinearLayout(this);
+                logItem.setOrientation(LinearLayout.VERTICAL);
+                logItem.setPadding(dp(8), dp(6), dp(8), dp(6));
+                logItem.setBackground(round(bgColor(), dp(6), borderColor()));
+
+                String timeStr = time > 0 ? sdf.format(new java.util.Date(time)) : "";
+                TextView top = text(timeStr + " · " + (title.isEmpty() ? pkg : title), 11, textMain(), true);
+                logItem.addView(top);
+
+                if (!textStr.isEmpty()) {
+                    TextView body = text(textStr, 10, textMuted(), false);
+                    logItem.addView(body);
+                }
+
+                int statusColor = status.startsWith("CAPURAT") ? primaryGreen() : (status.startsWith("CONECTAT") ? primaryGreen() : textMuted());
+                TextView stat = text(status, 10, statusColor, true);
+                logItem.addView(stat, margin(MATCH, WRAP, 0, dp(2), 0, 0));
+
+                layout.addView(logItem, margin(MATCH, WRAP, 0, dp(4), 0, dp(4)));
+            }
+        }
+
+        sv.addView(layout);
+        builder.setView(sv);
+        builder.setPositiveButton("Închide", null);
+        builder.show();
     }
 
     private void triggerTestPayment() {
