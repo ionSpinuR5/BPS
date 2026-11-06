@@ -91,9 +91,11 @@ public final class BankNotificationListener extends NotificationListenerService 
         KNOWN_BANK_PACKAGES.add("com.miui.mms");
     }
 
-    // Flexible patterns matching amount before OR after currency symbol
-    private static final Pattern PATTERN_AMOUNT_THEN_CURR = Pattern.compile("(?i)(\\d+[\\d.,]*)\\s*(?:lei|ron|eur|€|\\$|usd|gbp|£)");
-    private static final Pattern PATTERN_CURR_THEN_AMOUNT = Pattern.compile("(?i)(?:lei|ron|eur|€|\\$|usd|gbp|£)\\s*(\\d+[\\d.,]*)");
+    // Prioritize RON / LEI amounts first so foreign exchange (e.g. 1 EUR in 5.31 RON) extracts 5.31 RON
+    private static final Pattern PATTERN_AMOUNT_THEN_RON = Pattern.compile("(?i)(\\d+[\\d.,]*)\\s*(?:lei|ron)");
+    private static final Pattern PATTERN_RON_THEN_AMOUNT = Pattern.compile("(?i)(?:lei|ron)\\s*(\\d+[\\d.,]*)");
+    private static final Pattern PATTERN_AMOUNT_THEN_FOREIGN = Pattern.compile("(?i)(\\d+[\\d.,]*)\\s*(?:eur|€|\\$|usd|gbp|£)");
+    private static final Pattern PATTERN_FOREIGN_THEN_AMOUNT = Pattern.compile("(?i)(?:eur|€|\\$|usd|gbp|£)\\s*(\\d+[\\d.,]*)");
 
     private static final Pattern MERCHANT_REGEX = Pattern.compile(
             "(?i)(?:la|at|catre|to|comerciant|merchant)\\s+([A-Za-z0-9\\u00C0-\\u024F\\s.,&'\\-_]+?)" +
@@ -222,18 +224,32 @@ public final class BankNotificationListener extends NotificationListenerService 
     public static long extractAmountBani(String text) {
         if (text == null || text.isEmpty()) return 0;
 
-        // 1. Amount followed by currency (e.g. 45.50 lei, 45,50 RON)
-        Matcher m1 = PATTERN_AMOUNT_THEN_CURR.matcher(text);
-        if (m1.find()) {
-            String raw = m1.group(1);
+        // 1. Prioritize RON / LEI first (e.g. 5.31 RON or lei 5.31)
+        Matcher mRon1 = PATTERN_AMOUNT_THEN_RON.matcher(text);
+        if (mRon1.find()) {
+            String raw = mRon1.group(1);
             long val = parseAmountStringToBani(raw);
             if (val > 0) return val;
         }
 
-        // 2. Currency followed by amount (e.g. RON 45.50, €12.50)
-        Matcher m2 = PATTERN_CURR_THEN_AMOUNT.matcher(text);
-        if (m2.find()) {
-            String raw = m2.group(1);
+        Matcher mRon2 = PATTERN_RON_THEN_AMOUNT.matcher(text);
+        if (mRon2.find()) {
+            String raw = mRon2.group(1);
+            long val = parseAmountStringToBani(raw);
+            if (val > 0) return val;
+        }
+
+        // 2. Foreign currency fallback (e.g. 10.00 EUR, €12.50, $25)
+        Matcher mFor1 = PATTERN_AMOUNT_THEN_FOREIGN.matcher(text);
+        if (mFor1.find()) {
+            String raw = mFor1.group(1);
+            long val = parseAmountStringToBani(raw);
+            if (val > 0) return val;
+        }
+
+        Matcher mFor2 = PATTERN_FOREIGN_THEN_AMOUNT.matcher(text);
+        if (mFor2.find()) {
+            String raw = mFor2.group(1);
             long val = parseAmountStringToBani(raw);
             if (val > 0) return val;
         }
@@ -297,6 +313,11 @@ public final class BankNotificationListener extends NotificationListenerService 
                     !lowerTitle.contains("google")) {
                 return title;
             }
+        }
+
+        if (body.toLowerCase(Locale.ROOT).contains("schimb") || body.toLowerCase(Locale.ROOT).contains("valutar") ||
+                body.toLowerCase(Locale.ROOT).contains("exchange")) {
+            return "Schimb valutar";
         }
 
         if (body.toLowerCase(Locale.ROOT).contains("transfer") || body.toLowerCase(Locale.ROOT).contains("trimis") ||
